@@ -207,6 +207,10 @@ def main():
     lint_parser = subparsers.add_parser("lint", help="Lint source code against design tokens")
     lint_parser.add_argument("target", nargs="?", default="src", help="File or directory to lint")
 
+    # dispatch
+    dispatch_parser = subparsers.add_parser("dispatch", help="Dispatch pending tasks to available subagent workers")
+    dispatch_parser.add_argument("--worker", help="Optional explicit worker name", default=None)
+
     args = parser.parse_args()
 
     if args.command == "status":
@@ -227,6 +231,12 @@ def main():
         cmd_prd(args)
     elif args.command == "lint":
         cmd_lint(args)
+    elif args.command == "dispatch":
+        from dispatcher import TaskDispatcher
+        dispatcher = TaskDispatcher()
+        ok, msg = dispatcher.dispatch_next(worker_name=args.worker)
+        print(msg)
+
 
 
 if __name__ == "__main__":

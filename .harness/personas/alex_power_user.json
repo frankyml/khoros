@@ -1,0 +1,16 @@
+{
+  "name": "Alex",
+  "archetype": "Impatient Power User",
+  "techProficiency": "Expert",
+  "priorities": [
+    "Sub-200ms interaction latency",
+    "Keyboard shortcuts & fluid gestures",
+    "Minimal click depth (<= 3 clicks for core JTBD)",
+    "Efficient multi-tasking and quick data input"
+  ],
+  "frictionTriggers": [
+    "Unnecessary confirmation modals",
+    "Slow loading spinners without optimistic updates",
+    "Multi-step wizard flows that cannot be bypassed"
+  ]
+}

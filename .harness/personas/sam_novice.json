@@ -1,0 +1,16 @@
+{
+  "name": "Sam",
+  "archetype": "Non-Technical Novice",
+  "techProficiency": "Basic",
+  "priorities": [
+    "Intuitive visual affordances",
+    "Plain, jargon-free explanations",
+    "Clear, immediate validation and error recovery",
+    "Forgiving actions (undo instead of destructive warnings)"
+  ],
+  "frictionTriggers": [
+    "Technical error codes (e.g., 'HTTP 502' or 'SQL constraint violation')",
+    "Ambiguous iconography without text labels",
+    "Sudden state jumps without subtle transition animations"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Jordan",
+  "archetype": "Accessibility & Screen-Reader User",
+  "techProficiency": "Intermediate",
+  "priorities": [
+    "Strict semantic accessibility trees (contentDescription, role, state)",
+    "WCAG AAA color contrast (>= 7:1 for normal text)",
+    "Minimum 48x48dp interactive touch bounds",
+    "Support for 200% system font scaling without text clipping"
+  ],
+  "frictionTriggers": [
+    "Unlabeled icon buttons ('unlabeled_button_01')",
+    "Low contrast placeholder text",
+    "Time-limited actions that cannot be extended or paused",
+    "Custom gesture-only inputs lacking accessible single-tap alternatives"
+  ]
+}
