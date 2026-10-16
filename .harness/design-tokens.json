@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "Personal Development Harness Unified Design Tokens",
+  "version": "1.0.0",
+  "color": {
+    "primary": {
+      "light": "#00629E",
+      "dark": "#99CBFF",
+      "description": "Primary brand action color, 60% prominent in CTA and primary highlights"
+    },
+    "onPrimary": {
+      "light": "#FFFFFF",
+      "dark": "#003355",
+      "description": "Text/icon color on top of primary"
+    },
+    "primaryContainer": {
+      "light": "#CFE5FF",
+      "dark": "#004A77",
+      "description": "Tonal container for primary elements"
+    },
+    "secondary": {
+      "light": "#526070",
+      "dark": "#B9C8DA",
+      "description": "Secondary accent color, 30% supporting balance"
+    },
+    "surface": {
+      "light": "#F7F9FC",
+      "dark": "#101418",
+      "description": "Base app background surface"
+    },
+    "onSurface": {
+      "light": "#181C20",
+      "dark": "#E0E2E8",
+      "description": "Main body text color ensuring WCAG AAA >= 7:1 contrast"
+    },
+    "error": {
+      "light": "#BA1A1A",
+      "dark": "#FFB4AB",
+      "description": "Destructive and error states"
+    }
+  },
+  "spacing": {
+    "xs": "4dp",
+    "sm": "8dp",
+    "md": "16dp",
+    "lg": "24dp",
+    "xl": "32dp",
+    "xxl": "48dp"
+  },
+  "typography": {
+    "fontFamily": "Inter, Roboto, sans-serif",
+    "scale": {
+      "displayLarge": {
+        "size": "57sp",
+        "lineHeight": "64sp",
+        "weight": "400"
+      },
+      "headlineMedium": {
+        "size": "28sp",
+        "lineHeight": "36sp",
+        "weight": "600"
+      },
+      "titleMedium": {
+        "size": "16sp",
+        "lineHeight": "24sp",
+        "weight": "500"
+      },
+      "bodyLarge": {
+        "size": "16sp",
+        "lineHeight": "24sp",
+        "weight": "400"
+      },
+      "bodyMedium": {
+        "size": "14sp",
+        "lineHeight": "20sp",
+        "weight": "400"
+      },
+      "labelLarge": {
+        "size": "14sp",
+        "lineHeight": "20sp",
+        "weight": "500"
+      }
+    }
+  },
+  "elevation": {
+    "level0": "0dp",
+    "level1": "1dp",
+    "level2": "3dp",
+    "level3": "6dp"
+  },
+  "accessibility": {
+    "minimumTapTargetDp": 48,
+    "wcagRatio": "AAA"
+  }
+}
