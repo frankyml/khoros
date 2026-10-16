@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""
+Personal Development Harness (PDH) - Active Crash Sentinel
+Monitors Android logcat for unhandled exceptions/ANRs and logs DEFECT_REPORTED to blackboard.db.
+"""
+
+import argparse
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HARNESS_DIR = Path(__file__).resolve().parent.parent / ".harness"
+sys.path.insert(0, str(HARNESS_DIR))
+
+from blackboard import Blackboard
+
+
+def watch_logcat(package_filter: str = ""):
+    bb = Blackboard()
+    print(f"Crash Sentinel active. Monitoring logcat for crashes (filter: '{package_filter}')...")
+
+    cmd = ["adb", "logcat", "-b", "crash", "-v", "time"]
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except Exception as e:
+        print(f"Warning: Could not launch adb logcat ({e}). Emulator might not be running.")
+        sys.exit(0)
+
+    crash_buffer = []
+    try:
+        for line in proc.stdout:
+            print(line, end="")
+            crash_buffer.append(line)
+            if "FATAL EXCEPTION" in line or "ANR in" in line:
+                trace = "".join(crash_buffer[-20:])
+                bb.publish_event(
+                    trace_id="runtime_crash",
+                    sender="crash_sentinel",
+                    recipient="dev_mobile",
+                    event_type="CRASH_ALERT",
+                    severity="CRITICAL",
+                    payload={"log_snippet": trace, "package": package_filter},
+                )
+                print("\n[!] CRASH DETECTED: Logged CRASH_ALERT to blackboard.db\n")
+    except KeyboardInterrupt:
+        proc.terminate()
+        print("Crash Sentinel stopped.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Active Android Crash Sentinel Daemon")
+    parser.add_argument("--package", default="", help="Optional package name filter")
+    parser.add_argument("--simulate", action="store_true", help="Simulate a crash event for testing")
+
+    args = parser.parse_args()
+
+    if args.simulate:
+        bb = Blackboard()
+        bb.publish_event(
+            trace_id="test_crash_trace",
+            sender="crash_sentinel",
+            recipient="dev_mobile",
+            event_type="CRASH_ALERT",
+            severity="CRITICAL",
+            payload={"error": "java.lang.NullPointerException: Simulated test crash", "package": "com.pdh.mobile"},
+        )
+        print("Simulated CRASH_ALERT successfully logged to blackboard.db.")
+        sys.exit(0)
+
+    watch_logcat(args.package)
+
+
+if __name__ == "__main__":
+    main()

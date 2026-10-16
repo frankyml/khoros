@@ -7,6 +7,7 @@ Controls task lifecycle, HITL review gate, blackboard queries, and recovery.
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 # Add harness directory to path
@@ -166,8 +167,78 @@ def main():
     parser = argparse.ArgumentParser(description="Personal Development Harness (PDH) CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+def cmd_monitor(args):
+    import platform
+    import shutil
+    bb = Blackboard()
+    gov = TokenGovernor()
+    tasks = bb.list_tasks()
+    events = bb.list_events(limit=5)
+    telemetry = gov.get_telemetry()
+
+    cols = shutil.get_terminal_size((80, 20)).columns
+    print("\n" + "=" * cols)
+    print(" 🛸 PERSONAL DEVELOPMENT HARNESS (PDH) - LIVE SYSTEM MONITOR".center(cols))
+    print("=" * cols)
+    print(f" Host: {platform.node()} ({platform.system()} {platform.release()}) | Arch: {platform.machine()}")
+    print(f" Concurrency Limit: 2 subagents max | Active Workers: {sum(1 for t in tasks if t['status'] == 'CLAIMED')}")
+    print("-" * cols)
+
+    print("\n[ACTIVE & RECENT TASKS]")
+    if not tasks:
+        print("  No tasks registered.")
+    else:
+        headers = ["ID", "Title", "Status", "Owner", "Token"]
+        rows = [[t["id"], t["title"][:28], t["status"], t["owner"] or "-", t["fencing_token"]] for t in tasks[-6:]]
+        print(format_table(headers, rows))
+
+    print("\n[TOKEN ECONOMY & GOVERNOR]")
+    print(f"  RPM: {telemetry['current_rpm']}/{telemetry['rpm_limit']}  |  TPM: {telemetry['current_tpm']}/{telemetry['tpm_limit']}")
+    print(f"  Cache Hit Rate: {telemetry['cache_hit_rate_percent']}%  |  Input: {telemetry['total_input_tokens']}  |  Cached: {telemetry['total_cached_tokens']}")
+
+    print("\n[LATEST AUDIT EVENTS]")
+    if not events:
+        print("  No recent events.")
+    else:
+        for e in events:
+            print(f"  Seq {e['seq']} [{e['severity']}]: {e['sender']} -> {e['recipient']} | {e['event_type']} ({e['trace_id']})")
+    print("=" * cols + "\n")
+
+
+def cmd_compact(args):
+    bb = Blackboard()
+    tasks = bb.list_tasks()
+    completed = [t for t in tasks if t["status"] == "COMPLETED"]
+    
+    summary_path = Path("CURRENT_SPRINT_STATE.md")
+    content = f"# Current Sprint State Checkpoint\nGenerated: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n\n"
+    content += "## Completed Tasks\n"
+    for t in completed:
+        content += f"- **[{t['id']}]** {t['title']} (Owner: {t['owner']})\n"
+
+    pending = [t for t in tasks if t["status"] in ("PENDING", "CLAIMED", "REVIEW_REQUESTED")]
+    content += "\n## Active / Pending Backlog\n"
+    for t in pending:
+        content += f"- **[{t['id']}]** {t['title']} (Status: {t['status']})\n"
+
+    with open(summary_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    print(f"✓ Sprint state compacted to: {summary_path}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Personal Development Harness (PDH) CLI")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
     # status
     subparsers.add_parser("status", help="Show current blackboard tasks and telemetry")
+
+    # monitor
+    subparsers.add_parser("monitor", help="Display rich live terminal system and token monitor")
+
+    # compact
+    subparsers.add_parser("compact", help="Compact completed sprint tasks into CURRENT_SPRINT_STATE.md")
 
     # task create
     task_parser = subparsers.add_parser("task", help="Task management")
@@ -215,6 +286,10 @@ def main():
 
     if args.command == "status":
         cmd_status(args)
+    elif args.command == "monitor":
+        cmd_monitor(args)
+    elif args.command == "compact":
+        cmd_compact(args)
     elif args.command == "task" and args.task_command == "create":
         cmd_task_create(args)
     elif args.command == "review":
@@ -238,6 +313,6 @@ def main():
         print(msg)
 
 
-
 if __name__ == "__main__":
     main()
+

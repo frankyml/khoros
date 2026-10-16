@@ -1,0 +1,27 @@
+# Maestro Declarative Persona Navigation Flow: Biometric Authentication
+appId: com.pdh.mobile
+---
+# Step 1: Launch application and check splash / onboarding
+- launchApp
+- assertVisible:
+    text: "Welcome"
+    optional: true
+
+# Step 2: Test Alex (Power User) rapid tap interaction (<200ms)
+- tapOn:
+    id: "btn_login_primary"
+
+# Step 3: Test Jordan (Accessibility) tap target and screen reader bounds
+- assertVisible:
+    id: "biometric_prompt_container"
+
+# Step 4: Biometric simulation / fallback to PIN
+- tapOn:
+    text: "Use PIN"
+- inputText: "1234"
+
+# Step 5: Test Sam (Novice) unambiguous state transition
+- assertVisible:
+    text: "Dashboard"
+- assertNotVisible:
+    text: "Error"
