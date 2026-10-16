@@ -227,9 +227,45 @@ def cmd_compact(args):
     print(f"✓ Sprint state compacted to: {summary_path}")
 
 
+def cmd_init(args):
+    target_dir = Path.cwd()
+    harness_src = HARNESS_DIR
+    target_harness = target_dir / ".harness"
+    target_harness.mkdir(parents=True, exist_ok=True)
+    
+    # Apply Btrfs nodatacow if on Btrfs
+    import subprocess
+    import shutil
+    subprocess.run(["chattr", "+C", str(target_harness)], capture_output=True)
+    
+    # Copy modules and configuration
+    for f in ["config.yaml", "design-tokens.json", "blackboard.py", "governor.py", "linter.py", "prd_engine.py", "dispatcher.py"]:
+        src_f = harness_src / f
+        dst_f = target_harness / f
+        if src_f.exists() and not dst_f.exists():
+            shutil.copy2(src_f, dst_f)
+            
+    # Copy personas and roles
+    for sub in ["personas", "roles", "ast_index"]:
+        src_sub = harness_src / sub
+        dst_sub = target_harness / sub
+        if src_sub.exists() and not dst_sub.exists():
+            shutil.copytree(src_sub, dst_sub)
+            
+    # Initialize blackboard
+    sys.path.insert(0, str(target_harness))
+    from blackboard import Blackboard
+    bb = Blackboard(db_path=target_harness / "blackboard.db")
+    print(f"✓ Harness successfully initialized in: {target_dir}")
+    print(f"✓ SQLite WAL Blackboard ready at: {target_harness / 'blackboard.db'}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Personal Development Harness (PDH) CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # init
+    subparsers.add_parser("init", help="Initialize harness in the current project directory")
 
     # status
     subparsers.add_parser("status", help="Show current blackboard tasks and telemetry")
@@ -284,7 +320,9 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "status":
+    if args.command == "init":
+        cmd_init(args)
+    elif args.command == "status":
         cmd_status(args)
     elif args.command == "monitor":
         cmd_monitor(args)
