@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""
+Personal Development Harness (PDH) - Unified Developer CLI
+Controls task lifecycle, HITL review gate, blackboard queries, and recovery.
+"""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+# Add harness directory to path
+HARNESS_DIR = Path(__file__).resolve().parent.parent / ".harness"
+sys.path.insert(0, str(HARNESS_DIR))
+
+from blackboard import Blackboard
+from governor import TokenGovernor, PriorityTier
+
+
+def format_table(headers, rows):
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i, val in enumerate(row):
+            widths[i] = max(widths[i], len(str(val)))
+    
+    header_str = " | ".join(h.ljust(widths[i]) for i, h in enumerate(headers))
+    sep_str = "-+-".join("-" * widths[i] for i in range(len(headers)))
+    out = [header_str, sep_str]
+    for row in rows:
+        out.append(" | ".join(str(val).ljust(widths[i]) for i, val in enumerate(row)))
+    return "\n".join(out)
+
+
+def cmd_status(args):
+    bb = Blackboard()
+    gov = TokenGovernor()
+    tasks = bb.list_tasks()
+    
+    print("\n=== Personal Development Harness (PDH) Status ===\n")
+    if not tasks:
+        print("No tasks registered in blackboard. Create one with: bin/harness task create <id> <title>")
+    else:
+        headers = ["ID", "Title", "Status", "Owner", "Fencing Token"]
+        rows = [
+            [t["id"], t["title"][:30], t["status"], t["owner"] or "-", t["fencing_token"]]
+            for t in tasks
+        ]
+        print(format_table(headers, rows))
+
+    telemetry = gov.get_telemetry()
+    print("\n--- Token Economy & Governor Telemetry ---")
+    print(f"RPM: {telemetry['current_rpm']} / {telemetry['rpm_limit']} | TPM: {telemetry['current_tpm']} / {telemetry['tpm_limit']}")
+    print(f"Cache Hit Rate: {telemetry['cache_hit_rate_percent']}% | Total Input: {telemetry['total_input_tokens']} | Cached: {telemetry['total_cached_tokens']}\n")
+
+
+def cmd_task_create(args):
+    bb = Blackboard()
+    bb.create_task(args.id, args.title, payload={"priority": args.priority})
+    print(f"Task '{args.id}' successfully created in blackboard.")
+
+
+def cmd_review(args):
+    bb = Blackboard()
+    tasks = {t["id"]: t for t in bb.list_tasks()}
+    if args.task_id not in tasks:
+        print(f"Error: Task '{args.task_id}' not found.", file=sys.stderr)
+        sys.exit(1)
+    
+    task = tasks[args.task_id]
+    print(f"\n--- Reviewing Task: {task['id']} ({task['title']}) ---")
+    print(f"Status: {task['status']} | Owner: {task['owner']} | Fencing Token: {task['fencing_token']}")
+    print("Payload:", json.dumps(json.loads(task["payload_json"] or "{}"), indent=2))
+
+
+def cmd_approve(args):
+    bb = Blackboard()
+    tasks = {t["id"]: t for t in bb.list_tasks()}
+    if args.task_id not in tasks:
+        print(f"Error: Task '{args.task_id}' not found.", file=sys.stderr)
+        sys.exit(1)
+    
+    with bb._get_connection() as conn:
+        conn.execute("UPDATE tasks SET status = 'COMPLETED' WHERE id = ?;", (args.task_id,))
+    bb.publish_event(
+        trace_id=args.task_id,
+        sender="human_developer",
+        recipient="orchestrator",
+        event_type="TASK_APPROVED",
+        severity="INFO",
+        payload={"approved_by": "developer"},
+    )
+    print(f"Task '{args.task_id}' APPROVED and marked COMPLETED.")
+
+
+def cmd_reject(args):
+    bb = Blackboard()
+    tasks = {t["id"]: t for t in bb.list_tasks()}
+    if args.task_id not in tasks:
+        print(f"Error: Task '{args.task_id}' not found.", file=sys.stderr)
+        sys.exit(1)
+    
+    with bb._get_connection() as conn:
+        conn.execute("UPDATE tasks SET status = 'PENDING', owner = NULL WHERE id = ?;", (args.task_id,))
+    bb.publish_event(
+        trace_id=args.task_id,
+        sender="human_developer",
+        recipient="orchestrator",
+        event_type="TASK_REJECTED",
+        severity="WARN",
+        payload={"feedback": args.feedback or "No feedback provided."},
+    )
+    print(f"Task '{args.task_id}' REJECTED and returned to PENDING with feedback.")
+
+
+def cmd_recover(args):
+    bb = Blackboard()
+    reclaimed = bb.recover_expired_leases()
+    print(f"Recovery complete. Reclaimed {reclaimed} expired/abandoned task lease(s).")
+
+
+def cmd_events(args):
+    bb = Blackboard()
+    events = bb.list_events(limit=args.limit)
+    print(f"\n=== Recent Events (Latest {len(events)}) ===\n")
+    if not events:
+        print("No events logged yet.")
+    else:
+        headers = ["Seq", "Timestamp", "Trace ID", "Sender", "Type", "Severity"]
+        rows = [
+            [e["seq"], e["timestamp"][:19], e["trace_id"], e["sender"], e["event_type"], e["severity"]]
+            for e in events
+        ]
+        print(format_table(headers, rows))
+    print()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Personal Development Harness (PDH) CLI")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # status
+    subparsers.add_parser("status", help="Show current blackboard tasks and telemetry")
+
+    # task create
+    task_parser = subparsers.add_parser("task", help="Task management")
+    task_subs = task_parser.add_subparsers(dest="task_command", required=True)
+    create_parser = task_subs.add_parser("create", help="Create a new task")
+    create_parser.add_argument("id", help="Unique task identifier")
+    create_parser.add_argument("title", help="Human-readable title")
+    create_parser.add_argument("--priority", choices=["Q0", "Q1", "Q2", "Q3"], default="Q2")
+
+    # review
+    review_parser = subparsers.add_parser("review", help="Review a submitted task")
+    review_parser.add_argument("task_id", help="Task ID to inspect")
+
+    # approve
+    approve_parser = subparsers.add_parser("approve", help="Approve and finalize a task")
+    approve_parser.add_argument("task_id", help="Task ID to approve")
+
+    # reject
+    reject_parser = subparsers.add_parser("reject", help="Reject a task with feedback")
+    reject_parser.add_argument("task_id", help="Task ID to reject")
+    reject_parser.add_argument("--feedback", help="Feedback message for the agent", default="")
+
+    # recover
+    subparsers.add_parser("recover", help="Scrub locks and recover expired leases")
+
+    # events
+    events_parser = subparsers.add_parser("events", help="Show event log")
+    events_parser.add_argument("--limit", type=int, default=20, help="Number of events to display")
+
+    args = parser.parse_args()
+
+    if args.command == "status":
+        cmd_status(args)
+    elif args.command == "task" and args.task_command == "create":
+        cmd_task_create(args)
+    elif args.command == "review":
+        cmd_review(args)
+    elif args.command == "approve":
+        cmd_approve(args)
+    elif args.command == "reject":
+        cmd_reject(args)
+    elif args.command == "recover":
+        cmd_recover(args)
+    elif args.command == "events":
+        cmd_events(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# bin/bwrap-exec: Unprivileged Bubblewrap Sandbox for Agent Commands
+# Restricts agent tools strictly to the project workspace.
+# Mounts system binaries read-only; denies access to sensitive user dotfiles.
+# ==============================================================================
+
+set -euo pipefail
+
+WORKSPACE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+USER_ID="$(id -u)"
+
+# Prepare run directory for ADB socket pass-through if active
+SOCKET_DIR="/run/user/${USER_ID}/harness"
+mkdir -p "${SOCKET_DIR}" 2>/dev/null || true
+
+BWRAP_ARGS=(
+    --die-with-parent
+    --unshare-user
+    --unshare-ipc
+    --unshare-pid
+    --unshare-uts
+    --proc /proc
+    --dev /dev
+    --tmpfs /tmp
+    --ro-bind /usr /usr
+    --ro-bind /etc /etc
+    --symlink usr/lib /lib
+    --symlink usr/bin /bin
+    --symlink usr/bin /sbin
+    --bind "${WORKSPACE}" "${WORKSPACE}"
+    --chdir "${WORKSPACE}"
+    --setenv HOME "${WORKSPACE}"
+    --setenv PATH "/usr/local/bin:/usr/bin:/bin"
+)
+
+if [[ -d /usr/lib64 ]]; then
+    BWRAP_ARGS+=(--symlink usr/lib64 /lib64)
+fi
+
+# Optional UNIX domain ADB socket bridge
+if [[ -S "${SOCKET_DIR}/adb.sock" ]]; then
+    BWRAP_ARGS+=(
+        --ro-bind "${SOCKET_DIR}/adb.sock" "/run/adb.sock"
+        --setenv ADB_SERVER_SOCKET "localfilesystem:/run/adb.sock"
+    )
+fi
+
+exec bwrap "${BWRAP_ARGS[@]}" "$@"

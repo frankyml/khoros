@@ -1,0 +1,32 @@
+# Personal Development Harness - Git Ignore
+.harness/blackboard.db*
+.harness/worktrees/
+.harness/archives/
+.harness/ast_index/symbols.db*
+.harness/*.log
+
+# Android & Gradle
+.gradle/
+build/
+app/build/
+*.apk
+*.aab
+
+# KMP & Kotlin
+.idea/
+*.iml
+.kotlin/
+shared/build/
+composeApp/build/
+iosApp/build/
+
+# Python & Environment
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# OS and Scratch files
+.DS_Store
+Thumbs.db

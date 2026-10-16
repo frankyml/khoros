@@ -1,0 +1,48 @@
+# Personal Development Harness (PDH) Configuration
+version: "1.0"
+
+host:
+  platform: "cachyos-linux"
+  cpu_cores: 4
+  cpu_threads: 8
+  btrfs_cow_disabled: true
+  bwrap_sandbox: true
+
+models:
+  reasoning:
+    id: "gemini-pro"
+    description: "Gemini Pro for architecture, STRIDE security, PRD synthesis, and complex debug"
+    temperature: 0.2
+  fast:
+    id: "gemini-flash"
+    description: "Gemini Flash for rapid AST linting, persona driving, diff checking, and commits"
+    temperature: 0.1
+
+governor:
+  concurrency:
+    max_parallel_subagents: 2
+    max_worker_threads: 4
+  token_budget:
+    rpm_limit: 60
+    tpm_limit: 1000000
+    reserved_headroom_ratio: 0.25  # 25% exclusive reserve for Q0 (Security) and Q1 (Architect)
+    cache_prefix_min_tokens: 32768
+  leases:
+    lease_ttl_seconds: 300
+    heartbeat_interval_seconds: 60
+
+mobile:
+  default_engine: "kmp"  # Options: "kmp", "compose", "flutter"
+  android_target_sdk: 34
+  frame_pacing:
+    enforce_vsync: true
+    max_jank_percentage: 1.0
+    max_frame_time_95th_ms: 16.66  # 8.33ms for 120Hz, 16.66ms for 60Hz
+  offline_sync:
+    protocol: "occ_field_level"
+    mutation_journal: true
+
+blackboard:
+  database_path: ".harness/blackboard.db"
+  wal_mode: true
+  busy_timeout_ms: 5000
