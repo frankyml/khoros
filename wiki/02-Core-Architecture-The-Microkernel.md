@@ -1,12 +1,12 @@
 # Chapter 02: Core Architecture — The Microkernel
 
-The core runtime of PDH v3.0 is built on the classic operating systems principle of **Mechanism vs. Policy separation**. 
+The core runtime of **Khoros** is built on the classic operating systems principle of **Mechanism vs. Policy separation**. 
 
-The **Harness Microkernel** provides only execution mechanics: atomic transaction serialization, state transition scheduling, worktree sandboxing, and resource metering. It contains zero knowledge of programming languages, framework conventions, or domain rules.
+The **Khoros Microkernel** provides only execution mechanics: atomic transaction serialization, state transition scheduling, worktree sandboxing, and resource metering. It contains zero knowledge of programming languages, framework conventions, or domain rules.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        PDH v3.0 MICROKERNEL RUNTIME                    │
+│                        KHOROS MICROKERNEL RUNTIME                      │
 ├────────────────────────────────────────────────────────────────────────┤
 │  ┌────────────────────────┐  ┌──────────────────────────────────────┐  │
 │  │   Kernel Event Store   │  │       Dual-Graph State Engine        │  │
@@ -31,7 +31,7 @@ The **Harness Microkernel** provides only execution mechanics: atomic transactio
 
 In a multi-agent system where parallel squads perform code synthesis, run tests, and commit telemetry simultaneously, shared databases face **lock contention** and `SQLITE_BUSY` errors.
 
-PDH v3.0 resolves this via an **Event-Sourced Zero-Contention Ledger Protocol** implemented in [`kernel/event_store.py`](../.harness/kernel/event_store.py).
+Khoros resolves this via an **Event-Sourced Zero-Contention Ledger Protocol** implemented in [`kernel/event_store.py`](../.harness/kernel/event_store.py).
 
 ### Transactional Protocol Rules:
 1. **Decoupled LLM Execution**: Agent generation, test runs, and shell commands execute strictly outside database locks.
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS file_leases (
 
 Software development is intrinsically iterative: code is written, verified, critiqued, and amended. However, classical DAG schedulers require strict acyclicity.
 
-PDH v3.0 introduces the **Dual-Graph Resolution** in [`kernel/graph.py`](../.harness/kernel/graph.py):
+Khoros introduces the **Dual-Graph Resolution** in [`kernel/graph.py`](../.harness/kernel/graph.py):
 
 ### A. The Logical Graph (Cyclic State Machine)
 
@@ -146,7 +146,7 @@ def check_barrier_sync(self, task_id: str) -> Tuple[bool, List[str]]:
 
 Executing multiple agents within the same working copy causes file thrashing, unstaged diff collisions, and Git index lock exceptions.
 
-PDH v3.0 implements **Hybrid Git Worktree Sandboxing** via [`kernel/worktree.py`](../.harness/kernel/worktree.py):
+Khoros implements **Hybrid Git Worktree Sandboxing** via [`kernel/worktree.py`](../.harness/kernel/worktree.py):
 
 ```
 Root Workspace (/home/user/project)

@@ -1,6 +1,6 @@
 # Chapter 05: Team Organization & Squad Dynamics
 
-Rather than maintaining rigid, permanent hierarchies or unconstrained chatrooms, PDH v3.0 organizes agents into **Dynamic Cellular Squads** assembled just-in-time around specific task archetypes.
+Rather than maintaining rigid, permanent hierarchies or unconstrained chatrooms, **Khoros** organizes agents into **Dynamic Cellular Squads** assembled just-in-time around specific task archetypes.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -18,7 +18,7 @@ Rather than maintaining rigid, permanent hierarchies or unconstrained chatrooms,
 
 Unstructured conversational chat between agents causes exponential context bloat ($O(N^2)$), hallucinated agreements, and lost-in-the-middle omissions.
 
-PDH v3.0 enforces a strict **3-Tier Protocol**:
+Khoros enforces a strict **3-Tier Protocol**:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐

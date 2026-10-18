@@ -1,6 +1,6 @@
 # Chapter 04: The Lean Software Factory
 
-PDH v3.0 adapts the principles of the **Toyota Production System (TPS)** and modern Lean Manufacturing to multi-agent software engineering.
+**Khoros** adapts the principles of the **Toyota Production System (TPS)** and modern Lean Manufacturing to multi-agent software engineering.
 
 ```
 [Raw Demand] ──► [Station 1: CAD] ──► [Station 2: Sub-Assembly] ──► [Station 3: Audit] ──► [Station 4: Pacemaker Merge]
@@ -14,7 +14,7 @@ PDH v3.0 adapts the principles of the **Toyota Production System (TPS)** and mod
 
 ## 1. The 4 Assembly Line Stations
 
-Traditional software engineering allows large batches of unverified code to accumulate across branches before massive merge reviews. PDH v3.0 enforces **One-Piece Flow** and strict work-in-progress (CONWIP) limits:
+Traditional software engineering allows large batches of unverified code to accumulate across branches before massive merge reviews. Khoros enforces **One-Piece Flow** and strict work-in-progress (CONWIP) limits:
 
 ### Station 1: CAD Blueprinting & Contract Tooling
 - **Takt Time ($T_{\text{takt}}$)**: 90 seconds.
@@ -52,10 +52,10 @@ Traditional software engineering allows large batches of unverified code to accu
 
 In classical manufacturing, catching defects downstream at final inspection causes costly scrap and rework (*Muda of Inspection*).
 
-PDH v3.0 implements **Quality at the Source (*Jidoka*)** via [`kernel/jigs.py`](../.harness/kernel/jigs.py):
+Khoros implements **Quality at the Source (*Jidoka*)** via [`kernel/jigs.py`](../.harness/kernel/jigs.py):
 
 ```
-      Traditional Multi-Agent Pipeline                     PDH v3.0 In-Station Jigs
+      Traditional Multi-Agent Pipeline                     Khoros In-Station Jigs
 ┌──────────────────────────────────────────┐    ┌──────────────────────────────────────────┐
 │ Worker writes code with raw #hex color   │    │ Worker attempts to write raw #hex color  │
 │ 15 min later: CI or Critic rejects patch │ VS │ In-Station Jig immediately blocks write  │
@@ -74,7 +74,7 @@ PDH v3.0 implements **Quality at the Source (*Jidoka*)** via [`kernel/jigs.py`](
 
 In the Toyota Production System, any worker can pull the **Andon Cord** to halt the line when a defect occurs. However, in an AI factory, halting everything for minor whitespace or format nits causes **factory starvation**.
 
-PDH v3.0 establishes a **Three-Tiered Andon System**:
+Khoros establishes a **Three-Tiered Andon System**:
 
 | Tier | Severity | Trigger | Assembly Action |
 |---|---|---|---|

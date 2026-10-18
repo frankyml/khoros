@@ -1,6 +1,6 @@
 # Chapter 06: The Kaizen Self-Improvement Engine
 
-The **Kaizen Engine** enables PDH v3.0 to continuously learn from failures and developer corrections without suffering from prompt drift, hallucinated constraints, or catastrophic forgetting.
+The **Kaizen Engine** enables **Khoros** to continuously learn from failures and developer corrections without suffering from prompt drift, hallucinated constraints, or catastrophic forgetting.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -29,7 +29,7 @@ The **Kaizen Engine** enables PDH v3.0 to continuously learn from failures and d
 
 In multi-agent systems, naively blaming the last worker who touched code creates a **moral hazard**: Squad Leads generate vague specifications, Critics fail to catch regressions, and Builders take all the blame.
 
-PDH v3.0 implements a **3-Stage Causal Elimination DAG** in [`kaizen/attribution.py`](../.harness/kaizen/attribution.py) to calculate the credit attribution vector:
+Khoros implements a **3-Stage Causal Elimination DAG** in [`kaizen/attribution.py`](../.harness/kaizen/attribution.py) to calculate the credit attribution vector:
 
 $$\vec{\alpha} = \langle \alpha_{\text{spec}}, \alpha_{\text{impl}}, \alpha_{\text{eval}}, \alpha_{\text{tool}} \rangle, \quad \sum \alpha_k = 1.0$$
 
@@ -59,7 +59,7 @@ flowchart TD
 
 ## 2. The Determinism Invariant (Code > Prompt)
 
-PDH v3.0 operates under a fundamental meta-learning rule:
+Khoros operates under a fundamental meta-learning rule:
 
 > **"Never keep in a prompt what can be enforced by a deterministic linter or test."**
 
@@ -73,7 +73,7 @@ This permanently eliminates cognitive load from the prompt, consumes **zero prom
 
 Naively running prompt optimizers like DSPy MIPROv2 or Language Agent Tree Search (LATS) during live development incurs massive token costs (\$50–\$200/run) and high latency.
 
-PDH v3.0 decouples prompt optimization into **two pragmatic tiers**:
+Khoros decouples prompt optimization into **two pragmatic tiers**:
 
 ### A. Selective Micro-LATS (Station 1 Spec CAD Only)
 - Tree search is **never** used during code generation.

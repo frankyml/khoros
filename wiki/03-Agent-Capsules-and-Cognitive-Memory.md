@@ -1,6 +1,6 @@
 # Chapter 03: Agent Capsules & Cognitive Memory
 
-In PDH v3.0, agents are not defined by monolithic, open-ended system prompt files. Instead, domain intelligence, toolkits, constraints, and memory are packaged into **Agent Capsules** (`capsule.yaml`).
+In **Khoros**, agents are not defined by monolithic, open-ended system prompt files. Instead, domain intelligence, toolkits, constraints, and memory are packaged into **Agent Capsules** (`capsule.yaml`).
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -65,7 +65,7 @@ rules_and_invariants:
 
 Treating an LLM's context window as an unbudgeted text stream leads to **attention dispersion**, high latency, and catastrophic prompt dilution.
 
-PDH v3.0 enforces a mathematical context budget across 4 tiers:
+Khoros enforces a mathematical context budget across 4 tiers:
 
 $$\mathcal{S}_{\text{capsule}} = \langle \mathcal{P}_{\text{charter}}, \mathcal{T}_{\text{exec}}, \mathcal{M}_{\text{semantic}}, \mathcal{M}_{\text{episodic}} \rangle$$
 
@@ -113,7 +113,7 @@ In naive agent systems, when an error occurs, engineers or self-tuning loops app
 This causes **attention dilution**: the LLM fixates on minor syntactic trivia while missing critical functional requirements.
 
 ### The Mathematical Pareto Bound
-In PDH v3.0, an Agent Capsule enforces a hard Pareto cap:
+In Khoros, an Agent Capsule enforces a hard Pareto cap:
 $$K \le 12 \text{ rules (max 1,000 tokens)}$$
 
 A candidate rule $R_{\text{new}}$ synthesized by the Kaizen engine **cannot be added** if the capsule already holds $K=12$ rules unless:

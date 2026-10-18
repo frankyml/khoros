@@ -22,7 +22,7 @@ Named after the synchronized classical Greek ensemble led by the *Coryphaeus* (o
 
 ## Architectural Philosophy: The Three Invariants
 
-PDH is governed by three non-negotiable architectural invariants:
+**Khoros** is governed by three non-negotiable architectural invariants:
 
 1. **The Separation Invariant (Mechanism vs. Policy)**:  
    The core engine (Kernel) must contain zero domain knowledge. It provides distributed OS mechanics (state machines, transactions, sandboxes). All domain logic, personas, and verification criteria live strictly in declarative Agent Capsules.
