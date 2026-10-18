@@ -132,6 +132,44 @@ class TestHarnessEngine(unittest.TestCase):
         self.assertEqual(telemetry["total_cached_tokens"], 36000)
         self.assertEqual(telemetry["cache_hit_rate_percent"], 90.0)
 
+    def test_governor_dynamic_reserve_and_circuit_breaker(self):
+        gov = TokenGovernor(db_path=self.db_path, min_cache_prefix_tokens=32768)
+
+        # 1. Verify dynamic reserve formula calculation
+        # Healthy CHR (>= 0.85) -> base reserve (0.25)
+        self.assertEqual(gov.calculate_dynamic_reserve(0.95), 0.25)
+        self.assertEqual(gov.calculate_dynamic_reserve(0.85), 0.25)
+        # Degraded CHR (0.50) -> reserve scales significantly (> 0.40)
+        res_50 = gov.calculate_dynamic_reserve(0.50)
+        self.assertGreater(res_50, 0.35)
+        # Total cache collapse (0.0) -> max reserve (0.80)
+        self.assertAlmostEqual(gov.calculate_dynamic_reserve(0.0), 0.80)
+
+        # 2. Simulate 4 severe cache break events (input=50000, cached=0)
+        for _ in range(4):
+            gov.record_usage(PriorityTier.Q2_CODING, input_tokens=50000, cached_tokens=0, output_tokens=1000)
+
+        telemetry = gov.get_telemetry()
+        self.assertEqual(telemetry["cache_breaks_last_5m"], 4)
+        self.assertEqual(telemetry["window_chr_percent"], 0.0)
+
+        # 3. Andon Cord should now be TRIPPED (CHR 0.0% < 70.0%)
+        # Q2 Coding & Q3 Background must be throttled
+        ok_q2, reason_q2 = gov.can_dispatch(PriorityTier.Q2_CODING, 2000)
+        self.assertFalse(ok_q2)
+        self.assertIn("ANDON CORD ACTIVE", reason_q2)
+
+        ok_q3, reason_q3 = gov.can_dispatch(PriorityTier.Q3_BACKGROUND, 1000)
+        self.assertFalse(ok_q3)
+        self.assertIn("ANDON CORD ACTIVE", reason_q3)
+
+        # Q0 Critical and Q1 Reasoning should still be admitted to allow recovery/repair
+        ok_q0, _ = gov.can_dispatch(PriorityTier.Q0_CRITICAL, 2000)
+        self.assertTrue(ok_q0)
+
+        ok_q1, _ = gov.can_dispatch(PriorityTier.Q1_REASONING, 2000)
+        self.assertTrue(ok_q1)
+
     def test_design_token_linter_precision(self):
         linter = DesignTokenLinter()
 

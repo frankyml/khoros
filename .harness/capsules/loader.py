@@ -62,34 +62,44 @@ class AgentCapsule:
     def build_static_prefix_preamble(self) -> str:
         """
         Builds the canonical 45% static preamble [Charter || Tools || Distilled Memory]
-        that remains byte-for-byte identical across turns to maximize KV-cache reuse (>=85% hit rate).
+        that remains 100% byte-for-byte identical across turns to maximize KV-cache reuse (>=85% hit rate).
+        Enforces lexical sorting, newline normalization, and RFC-compliant byte-stability.
         """
         sections = []
 
         # 1. Charter & Role (15%)
-        role = self.charter.get("role", "Engineer")
-        goal = self.charter.get("goal", "Execute contracts with deterministic craft.")
+        role = self.charter.get("role", "Engineer").strip()
+        goal = self.charter.get("goal", "Execute contracts with deterministic craft.").strip()
         sections.append(f"# SYSTEM CHARTER: {role}\nGoal: {goal}")
-        escalations = self.charter.get("escalation_conditions", [])
+        escalations = sorted(self.charter.get("escalation_conditions", []))
         if escalations:
-            sections.append("Escalation Boundaries:\n" + "\n".join(f"- {e}" for e in escalations))
+            sections.append("Escalation Boundaries:\n" + "\n".join(f"- {e.strip()}" for e in escalations))
 
-        # 2. Executable Capabilities (15%)
-        skills = self.capabilities.get("skills", [])
-        jigs = self.capabilities.get("jigs", [])
+        # 2. Executable Capabilities (15% - Lexically sorted for byte-level cache invariance)
+        skills = sorted(self.capabilities.get("skills", []))
+        jigs = sorted(self.capabilities.get("jigs", []))
         sections.append(
             f"# EXECUTABLE CAPABILITIES\nActive Skills: {', '.join(skills) if skills else 'None'}\n"
             f"Active In-Station Jigs: {', '.join(jigs) if jigs else 'None'}"
         )
 
-        # 3. Rules & Distilled Memory (15% - Pareto Cap K <= 12)
-        rules = self.rules_and_invariants.get("hard_constraints", [])
+        # 3. Rules & Distilled Memory (15% - Sorted by Rule ID to guarantee invariant prefix hashing)
+        raw_rules = self.rules_and_invariants.get("hard_constraints", [])
+        rules = sorted(raw_rules, key=lambda r: str(r.get("id", "")))
         if rules:
             sections.append("# HARD CONSTRAINTS & INVARIANTS (Pareto Cap K <= 12):\n" + "\n".join(
-                f"- [{r.get('id', 'RULE')}] ({r.get('enforcement', 'AST')}): {r.get('rule')}" for r in rules
+                f"- [{r.get('id', 'RULE')}] ({r.get('enforcement', 'AST')}): {r.get('rule', '').strip()}" for r in rules
             ))
 
-        return "\n\n".join(sections)
+        raw_preamble = "\n\n".join(sections)
+        # Normalize linebreaks and strip trailing whitespace
+        normalized = "\n".join(line.rstrip() for line in raw_preamble.replace("\r\n", "\n").splitlines())
+        return normalized
+
+    def get_prefix_hash(self) -> str:
+        """Returns the SHA-256 fingerprint of the static prefix preamble."""
+        import hashlib
+        return hashlib.sha256(self.build_static_prefix_preamble().encode("utf-8")).hexdigest()
 
     def add_rule(self, rule_id: str, rule: str, enforcement: str = "AST_LINTER", auto_subsume: bool = False) -> Tuple[bool, str]:
         """
