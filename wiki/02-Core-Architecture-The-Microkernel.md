@@ -86,17 +86,35 @@ Software development is intrinsically iterative: code is written, verified, crit
 PDH v3.0 introduces the **Dual-Graph Resolution** in [`kernel/graph.py`](../.harness/kernel/graph.py):
 
 ### A. The Logical Graph (Cyclic State Machine)
+
 The logical state machine defines allowed states and transitions:
-- `PENDING` $\xrightarrow{\text{dispatch}}$ `STATION_1_CAD`
-- `STATION_1_CAD` $\xrightarrow{\text{contract_ready}}$ `STATION_2_SUB_ASSEMBLY`
-- `STATION_2_SUB_ASSEMBLY` $\xrightarrow{\text{poka_yoke_pass}}$ `STATION_3_AUDIT`
-- `STATION_3_AUDIT` $\xrightarrow{\text{audit_approved}}$ `STATION_4_PACEMAKER`
-- `STATION_3_AUDIT` $\xrightarrow{\text{audit_rejected}}$ `STATION_2_SUB_ASSEMBLY` *(Loopback Transition)*
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING
+    PENDING --> STATION_1_CAD: dispatch
+    STATION_1_CAD --> STATION_2_SUB_ASSEMBLY: contract_ready
+    STATION_2_SUB_ASSEMBLY --> STATION_3_AUDIT: poka_yoke_pass
+    STATION_3_AUDIT --> STATION_4_PACEMAKER: audit_approved
+    STATION_3_AUDIT --> STATION_2_SUB_ASSEMBLY: audit_rejected (Loopback N <= 3)
+    STATION_4_PACEMAKER --> [*]
+```
+
+- `PENDING` &rarr; `STATION_1_CAD` (`action: dispatch`)
+- `STATION_1_CAD` &rarr; `STATION_2_SUB_ASSEMBLY` (`action: contract_ready`)
+- `STATION_2_SUB_ASSEMBLY` &rarr; `STATION_3_AUDIT` (`action: poka_yoke_pass`)
+- `STATION_3_AUDIT` &rarr; `STATION_4_PACEMAKER` (`action: audit_approved`)
+- `STATION_3_AUDIT` &rarr; `STATION_2_SUB_ASSEMBLY` (`action: audit_rejected` &mdash; *Loopback Transition*)
 
 ### B. The Physical Graph (Unrolled Acyclic Execution Ledger)
+
 The physical graph never loops back. Each pass through an iteration increments the task's execution epoch:
 
-$$\text{Task}(\text{epoch}=1) \xrightarrow{\text{CriticReject}} \text{Task}(\text{epoch}=2) \xrightarrow{\text{CriticPass}} \text{Task}(\text{epoch}=3)$$
+```mermaid
+flowchart LR
+    E1["Task (Epoch 1)"] -->|Critic Reject| E2["Task (Epoch 2)"]
+    E2 -->|Critic Pass| E3["Task (Epoch 3)"]
+```
 
 Every epoch attempt records its own diffs, tool traces, and gate checks immutably.
 
