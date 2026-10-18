@@ -1,29 +1,38 @@
-# Personal Development Harness (PDH) v2.0 Configuration
-version: "2.0"
+# Khoros (formerly Personal Development Harness) v3.1 Configuration
+version: "3.1"
 profile: "python"
 
 host:
-  platform: "cachyos-linux"
-  cpu_cores: 4
-  cpu_threads: 8
-  btrfs_cow_disabled: true
-  bwrap_sandbox: true
+  platform: "auto"  # Auto-adapts to Linux (CachyOS/Ubuntu) or Darwin/macOS (Apple Silicon M-series, e.g. M5 24GB)
+  cpu_cores: "auto"
+  cpu_threads: "auto"
+  bwrap_sandbox: "auto" # Enabled on Linux when bwrap present; POSIX isolation on macOS
 
-orchestrator:
-  lead_persona: "@lead"
-  topology: "player-coach"  # T0/T1 direct execution; T2/T3 Blackboard DAG + subagent fan-out
-  verify_before_submit: true
-  adversarial_critic: true
+provider: "auto" # Auto-detects Claude Code vs Antigravity / Gemini
 
 models:
-  reasoning:
-    id: "gemini-pro"
-    description: "Gemini Pro for @lead triage, @architect RFC/PRD synthesis, STRIDE security, and @critic verification"
-    temperature: 0.2
-  fast:
-    id: "gemini-flash"
-    description: "Gemini Flash for @explorer context harvesting, AST linting, persona evaluation, and fast checks"
-    temperature: 0.1
+  claude:
+    reasoning:
+      id: "claude-3-7-sonnet"
+      description: "Claude 3.7 Sonnet for @lead triage, architecture RFC/PRD synthesis, and @critic verification"
+      temperature: 0.2
+      cache_prefix_min_tokens: 1024
+    fast:
+      id: "claude-3-5-haiku"
+      description: "Claude 3.5 Haiku for AST linting, persona evaluation, and fast checks"
+      temperature: 0.1
+      cache_prefix_min_tokens: 1024
+  gemini:
+    reasoning:
+      id: "gemini-pro"
+      description: "Gemini Pro for @lead triage, @architect RFC/PRD synthesis, STRIDE security, and @critic verification"
+      temperature: 0.2
+      cache_prefix_min_tokens: 32768
+    fast:
+      id: "gemini-flash"
+      description: "Gemini Flash for @explorer context harvesting, AST linting, persona evaluation, and fast checks"
+      temperature: 0.1
+      cache_prefix_min_tokens: 1024
 
 governor:
   concurrency:

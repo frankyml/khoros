@@ -17,6 +17,7 @@ Named after the synchronized classical Greek ensemble led by the *Coryphaeus* (o
 | **05** | [Team Organization & Squad Dynamics](05-Team-Organization-and-Squad-Dynamics.md) | Cellular squad assembly, 3-tier squad protocol, and anti-deadlock circuit breakers. |
 | **06** | [The Kaizen Self-Improvement Engine](06-The-Kaizen-Self-Improvement-Engine.md) | Causal credit attribution ($\vec{\alpha}$), Code > Prompt invariant, and quarantined proposal ledgers. |
 | **07** | [Developer Guide & CLI Reference](07-Developer-Guide-and-CLI-Reference.md) | CLI commands, running verification gates, authoring capsules, and development workflows. |
+| **08** | [Autonomous Capabilities & Library Hygiene](08-Autonomous-Capabilities-and-Library-Hygiene.md) | Dynamic tool synthesis, AST risk classification, clean-trunk canaries, evolutionary skill grammar, and generational GC. |
 
 ---
 

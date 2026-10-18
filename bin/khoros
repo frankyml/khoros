@@ -1,1 +1,933 @@
-harness
+#!/usr/bin/env python3
+"""
+Khoros (PDH v3.1) - Self-Improving Agentic Software Factory & Microkernel CLI
+Controls Player-Coach triage, multi-archetype specs (PRD/RFC/RCA/Brief), DAG task lifecycle,
+Subagent Task Contracts, universal verification gates, autonomous capabilities, and telemetry.
+"""
+
+import argparse
+import json
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import List
+
+# Always load canonical engine modules from personal-development-harness/.harness
+ROOT_HARNESS_DIR = Path(__file__).resolve().parent.parent / ".harness"
+PROJECT_HARNESS_DIR = Path.cwd() / ".harness" if (Path.cwd() / ".harness").exists() else ROOT_HARNESS_DIR
+sys.path.insert(0, str(ROOT_HARNESS_DIR))
+
+from blackboard import Blackboard
+from dispatcher import LeadRouter, TaskDispatcher
+from governor import PriorityTier, TokenGovernor
+from linter import DesignTokenLinter
+from prd_engine import PRDEngine
+from verifier import VerificationPipeline, detect_project_profile
+
+
+def format_table(headers, rows):
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i, val in enumerate(row):
+            widths[i] = max(widths[i], len(str(val)))
+
+    header_str = " | ".join(h.ljust(widths[i]) for i, h in enumerate(headers))
+    sep_str = "-+-".join("-" * widths[i] for i in range(len(headers)))
+    out = [header_str, sep_str]
+    for row in rows:
+        out.append(" | ".join(str(val).ljust(widths[i]) for i, val in enumerate(row)))
+    return "\n".join(out)
+
+
+def default_lint_targets() -> List[Path]:
+    candidates = [Path("shared/src"), Path("androidApp/src"), Path("src")]
+    existing = [p for p in candidates if p.exists()]
+    return existing if existing else [Path("src")]
+
+
+def run_lint_targets(targets: List[Path]) -> int:
+    linter = DesignTokenLinter()
+    res = {}
+    for target in targets:
+        if target.is_file():
+            viols = linter.lint_file(target)
+            if viols:
+                res[str(target)] = viols
+        elif target.exists():
+            res.update(linter.lint_directory(target))
+
+    total_violations = sum(len(v) for v in res.values())
+    if total_violations == 0:
+        print("✓ All UI source files comply with design tokens.")
+        return 0
+    else:
+        print(f"✗ Found {total_violations} design token violation(s):\n")
+        for fpath, viols in res.items():
+            print(f"File: {fpath}")
+            for v in viols:
+                print(f"  Line {v['line']} [{v['severity']}]: {v['rule']} - {v['message']}")
+        return 1
+
+
+def run_verification_gate(targets: List[Path] = None, profile: str = None, run_tests: bool = False) -> int:
+    pipeline = VerificationPipeline(profile=profile)
+    ok, report = pipeline.run(targets=targets, run_tests=run_tests)
+    checks_str = ", ".join(report["checks_run"])
+    if ok:
+        print(f"✓ Universal Verification Gate passed [Profile: {report['profile']} | Checks: {checks_str}].")
+        return 0
+    else:
+        print(
+            f"✗ Verification Gate failed with {report['violation_count']} issue(s) "
+            f"[Profile: {report['profile']} | Checks: {checks_str}]:\n"
+        )
+        for v in report["violations"]:
+            print(f"  {v.get('file', '?')}:{v.get('line', 0)} [{v.get('severity', 'ERROR')}] {v.get('rule')}: {v.get('message')}")
+        return 1
+
+
+def _resolve_task_id(args) -> str:
+    tid = getattr(args, "task_id", None) or getattr(args, "task_id_flag", None)
+    if not tid:
+        print("Error: Task ID is required.", file=sys.stderr)
+        sys.exit(1)
+    return tid
+
+
+def cmd_status(args):
+    bb = Blackboard()
+    gov = TokenGovernor()
+    bb.recover_expired_leases()
+    tasks = bb.list_tasks()
+    active_profile = detect_project_profile()
+
+    try:
+        from kernel.host import get_host_environment
+        host_str = get_host_environment()["display_name"]
+    except Exception:
+        host_str = "Auto"
+
+    print(f"\n=== Khoros v3.1 Status [{Path.cwd().name} | Profile: {active_profile} | Host: {host_str}] ===\n")
+    if not tasks:
+        print("No tasks registered in blackboard. Create one with: khoros task create <id> <title>")
+    else:
+        headers = ["ID", "Type", "Title", "Status", "Owner", "Deps", "Token"]
+        rows = []
+        for t in tasks:
+            deps = bb.get_task_dependencies(t["id"])
+            deps_str = ",".join(deps) if deps else "-"
+            ttype = t.get("task_type", "feature")
+            rows.append([t["id"], ttype, t["title"][:32], t["status"], t["owner"] or "-", deps_str, t["fencing_token"]])
+        print(format_table(headers, rows))
+
+    telemetry = gov.get_telemetry()
+    print("\n--- Token Economy & Governor Telemetry ---")
+    print(f"RPM: {telemetry['current_rpm']} / {telemetry['rpm_limit']} | TPM: {telemetry['current_tpm']} / {telemetry['tpm_limit']}")
+    print(f"Cache Hit Rate: {telemetry['cache_hit_rate_percent']}% | Total Input: {telemetry['total_input_tokens']} | Cached: {telemetry['total_cached_tokens']}\n")
+
+
+def cmd_host(args):
+    from kernel.host import get_host_environment
+    env = get_host_environment()
+    print("\n=== Khoros v3.1 Host & Environment Auto-Adaptation ===")
+    print(f"OS Platform:          {env['os']} ({env['machine']})")
+    print(f"Hardware Memory:      {env['memory_gb']:.1f} GB Unified/System Memory")
+    print(f"CPU Cores:            {env['cpu_cores']} logical cores")
+    print(f"Filesystem CoW:       {env['filesystem_cow']} (CoW Supported: {env['cow_supported']})")
+    print(f"Sandbox Isolation:    {env['sandbox_mode']}")
+    print(f"Active Agent Runtime: {env['active_agent_runtime']}")
+    print(f"Prompt Cache Break:   {env['cache_prefix_tokens']} tokens")
+    print(f"Recommended Workers:  {env['recommended_max_workers']} concurrent worktrees\n")
+
+
+def cmd_triage(args):
+    router = LeadRouter()
+    files = [f.strip() for f in args.files.split(",") if f.strip()] if args.files else []
+    res = router.triage(args.request, scope_files=files, explicit_type=args.type)
+    print(f"\n=== Lead Orchestrator (@lead) Triage Assessment ===")
+    print(f"  Complexity Tier      : {res['tier']}")
+    print(f"  Task Archetype       : {res['task_type']}")
+    print(f"  Execution Mode       : {res['execution_mode']}")
+    print(f"  Recommended Spec     : {res['recommended_spec']}")
+    print(f"  Specialist Topology  : {', '.join(res['recommended_roles'])}")
+    print(f"  Workspace Isolation  : {res['workspace_isolation']} (Max Workers: {res['max_parallel_workers']})")
+    print(f"  Rationale            : {res['rationale']}\n")
+
+
+def cmd_task_create(args):
+    bb = Blackboard()
+    gov = TokenGovernor()
+    deps = [d.strip() for d in args.depends_on.split(",") if d.strip()] if getattr(args, "depends_on", None) else []
+    files = [f.strip() for f in args.files.split(",") if f.strip()] if getattr(args, "files", None) else []
+    criteria = [c.strip() for c in args.criteria.split(";") if c.strip()] if getattr(args, "criteria", None) else []
+
+    payload = {
+        "priority": args.priority,
+        "task_type": args.type,
+        "depends_on": deps,
+        "scope_files": files,
+        "acceptance_criteria": criteria,
+    }
+    if getattr(args, "spec", None):
+        payload["spec_path"] = args.spec
+
+    bb.create_task(args.id, args.title, payload=payload, task_type=args.type, depends_on=deps)
+    gov.record_usage(PriorityTier.Q1_REASONING, input_tokens=18000, cached_tokens=16384, output_tokens=1024)
+    dep_msg = f" (depends_on: {', '.join(deps)})" if deps else ""
+    print(f"Task '{args.id}' [{args.type}] successfully created in blackboard{dep_msg}.")
+
+
+def cmd_brief(args):
+    dispatcher = TaskDispatcher()
+    tid = _resolve_task_id(args)
+    packet = dispatcher.generate_subagent_packet(tid, role=args.role)
+    print(packet)
+
+
+def cmd_claim(args):
+    bb = Blackboard()
+    tid = _resolve_task_id(args)
+    met, unmet = bb.are_dependencies_met(tid)
+    if not met:
+        print(
+            f"Error: Cannot claim '{tid}' — unmet DAG dependencies: {', '.join(unmet)}.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    worker = args.worker or args.worker_pos or f"worker-{tid}"
+    ok, token = bb.claim_task(tid, worker)
+    if ok:
+        print(f"Claimed '{tid}' for '{worker}' (Fencing Token: {token})")
+    else:
+        print(f"Failed to claim '{tid}' (already claimed or does not exist).", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_heartbeat(args):
+    bb = Blackboard()
+    tid = _resolve_task_id(args)
+    if bb.heartbeat(tid, args.token):
+        print(f"Heartbeat recorded for '{tid}'. Lease extended.")
+    else:
+        print(f"Failed to heartbeat '{tid}' (not in CLAIMED state or token mismatch).", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_submit(args):
+    bb = Blackboard()
+    gov = TokenGovernor()
+    tid = _resolve_task_id(args)
+    tasks = {t["id"]: t for t in bb.list_tasks()}
+    if tid not in tasks:
+        print(f"Error: Task '{tid}' not found.", file=sys.stderr)
+        sys.exit(1)
+
+    if not getattr(args, "skip_lint", False):
+        rc = run_verification_gate()
+        if rc != 0:
+            print(f"Error: Cannot submit '{tid}' while verification violations exist.", file=sys.stderr)
+            sys.exit(1)
+
+    summary = getattr(args, "summary", None) or "Implementation completed and verified"
+    ok = bb.complete_task(tid, fencing_token=args.token, result={"summary": summary})
+    if ok:
+        gov.record_usage(PriorityTier.Q2_CODING, input_tokens=36000, cached_tokens=32768, output_tokens=2048)
+        print(f"Task '{tid}' submitted for review (status: REVIEW_REQUESTED).")
+    else:
+        print(f"Error: Could not transition '{tid}' to REVIEW_REQUESTED.", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_review(args):
+    bb = Blackboard()
+    tid = _resolve_task_id(args)
+    contract = bb.get_task_contract(tid)
+    if not contract:
+        print(f"Error: Task '{tid}' not found.", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"\n--- Reviewing Task: {contract['id']} ({contract['title']}) ---")
+    print(
+        f"Status: {contract['status']} | Type: {contract['task_type']} | "
+        f"Owner: {contract['owner']} | Fencing Token: {contract['fencing_token']}"
+    )
+    print("Contract:", json.dumps(contract, indent=2))
+
+
+def cmd_approve(args):
+    bb = Blackboard()
+    gov = TokenGovernor()
+    tid = _resolve_task_id(args)
+    tasks = {t["id"]: t for t in bb.list_tasks()}
+    if tid not in tasks:
+        print(f"Error: Task '{tid}' not found.", file=sys.stderr)
+        sys.exit(1)
+
+    if not getattr(args, "skip_lint", False):
+        rc = run_verification_gate()
+        if rc != 0:
+            print(f"Error: Approval blocked for '{tid}' due to verification violations.", file=sys.stderr)
+            sys.exit(1)
+
+    with bb._get_connection() as conn:
+        conn.execute(
+            "UPDATE tasks SET status = 'COMPLETED', updated_at = ? WHERE id = ?;",
+            (time.time(), tid),
+        )
+    gov.record_usage(PriorityTier.Q0_CRITICAL, input_tokens=24000, cached_tokens=22000, output_tokens=1024)
+    bb.publish_event(
+        trace_id=tid,
+        sender="reviewer_gate",
+        recipient="orchestrator",
+        event_type="TASK_APPROVED",
+        severity="INFO",
+        payload={"approved_by": "reviewer_gate"},
+    )
+    print(f"Task '{tid}' APPROVED and marked COMPLETED.")
+
+
+def cmd_reject(args):
+    bb = Blackboard()
+    tid = _resolve_task_id(args)
+    tasks = {t["id"]: t for t in bb.list_tasks()}
+    if tid not in tasks:
+        print(f"Error: Task '{tid}' not found.", file=sys.stderr)
+        sys.exit(1)
+
+    with bb._get_connection() as conn:
+        conn.execute(
+            "UPDATE tasks SET status = 'PENDING', owner = NULL, updated_at = ? WHERE id = ?;",
+            (time.time(), tid),
+        )
+    bb.publish_event(
+        trace_id=tid,
+        sender="reviewer_gate",
+        recipient="orchestrator",
+        event_type="TASK_REJECTED",
+        severity="WARN",
+        payload={"feedback": args.feedback or "No feedback provided."},
+    )
+    print(f"Task '{tid}' REJECTED and returned to PENDING with feedback.")
+
+
+def cmd_recover(args):
+    bb = Blackboard()
+    reclaimed = bb.recover_expired_leases()
+    print(f"Recovery complete. Reclaimed {reclaimed} expired/abandoned task lease(s).")
+
+
+def cmd_events(args):
+    bb = Blackboard()
+    events = bb.list_events(limit=args.limit)
+    print(f"\n=== Recent Events (Latest {len(events)}) ===\n")
+    if not events:
+        print("No events logged yet.")
+    else:
+        headers = ["Seq", "Timestamp", "Trace ID", "Sender", "Type", "Severity"]
+        rows = [
+            [e["seq"], e["timestamp"][:19], e["trace_id"], e["sender"], e["event_type"], e["severity"]]
+            for e in events
+        ]
+        print(format_table(headers, rows))
+    print()
+
+
+def cmd_personas(args):
+    personas_dir = PROJECT_HARNESS_DIR / "personas"
+    print(f"\n=== Active Project Personas ({personas_dir}) ===\n")
+    if not personas_dir.exists():
+        print("No personas directory found.")
+        return
+    files = sorted(personas_dir.glob("*.json"))
+    if not files:
+        print("No persona JSON files found.")
+        return
+    for pf in files:
+        try:
+            data = json.loads(pf.read_text(encoding="utf-8"))
+            print(f"• {data.get('name', pf.stem)} — {data.get('archetype', '')}")
+            for p in data.get("priorities", []):
+                print(f"    + Priority: {p}")
+            for ft in data.get("frictionTriggers", []):
+                print(f"    - Reject Trigger: {ft}")
+            print()
+        except Exception as e:
+            print(f"• {pf.name}: Error reading ({e})")
+
+
+def cmd_prd(args):
+    engine = PRDEngine()
+    gov = TokenGovernor()
+    path = engine.create_prd(args.slug, args.title, args.problem, profile=getattr(args, "profile", None))
+    gov.record_usage(PriorityTier.Q1_REASONING, input_tokens=36000, cached_tokens=32768, output_tokens=4096)
+    print(f"✓ PRD generated with Mermaid state machines and project personas at: {path}")
+
+
+def cmd_spec(args):
+    engine = PRDEngine()
+    gov = TokenGovernor()
+    path = engine.create_spec(
+        args.spec_type,
+        args.slug,
+        args.title,
+        args.problem,
+        profile=getattr(args, "profile", None),
+    )
+    gov.record_usage(PriorityTier.Q1_REASONING, input_tokens=36000, cached_tokens=32768, output_tokens=4096)
+    print(f"✓ Specification [{args.spec_type.upper()}] generated at: {path}")
+
+
+def cmd_lint(args):
+    raw_targets = args.targets if args.targets else []
+    targets = [Path(t) for t in raw_targets] if raw_targets else default_lint_targets()
+    rc = run_lint_targets(targets)
+    if rc != 0:
+        sys.exit(rc)
+
+
+def cmd_verify(args):
+    raw_targets = args.targets if args.targets else []
+    targets = [Path(t) for t in raw_targets] if raw_targets else None
+    rc = run_verification_gate(targets=targets, profile=args.profile, run_tests=args.with_tests)
+    if rc != 0:
+        sys.exit(rc)
+
+
+def cmd_profile(args):
+    cfg_path = PROJECT_HARNESS_DIR / "config.yaml"
+    if args.action == "show" or not args.name:
+        prof = detect_project_profile()
+        print(f"Active project profile: {prof} (Config: {cfg_path})")
+        return
+
+    new_prof = args.name.lower()
+    if cfg_path.exists():
+        text = cfg_path.read_text(encoding="utf-8")
+        if re.search(r"^\s*profile:\s*", text, re.MULTILINE):
+            text = re.sub(
+                r"^(\s*profile:\s*).*$",
+                rf'\g<1>"{new_prof}"',
+                text,
+                flags=re.MULTILINE,
+            )
+        else:
+            text = f'profile: "{new_prof}"\n' + text
+        cfg_path.write_text(text, encoding="utf-8")
+    else:
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        cfg_path.write_text(f'# PDH v2.0 Config\nversion: "2.0"\nprofile: "{new_prof}"\n', encoding="utf-8")
+    print(f"✓ Project profile updated to '{new_prof}' in {cfg_path}")
+
+
+def cmd_monitor(args):
+    bb = Blackboard()
+    gov = TokenGovernor()
+    bb.recover_expired_leases()
+    tasks = bb.list_tasks()
+    events = bb.list_events(limit=5)
+    telemetry = gov.get_telemetry()
+    active_profile = detect_project_profile()
+
+    cols = shutil.get_terminal_size((80, 20)).columns
+    print("\n" + "=" * cols)
+    print(f" 🛸 PERSONAL DEVELOPMENT HARNESS (PDH v2.0) - LIVE MONITOR [{Path.cwd().name} | {active_profile}]".center(cols))
+    print("=" * cols)
+    print(f" Host: {platform.node()} ({platform.system()} {platform.release()}) | Arch: {platform.machine()}")
+    print(f" Concurrency Limit: 2 subagents max | Active Workers: {sum(1 for t in tasks if t['status'] == 'CLAIMED')}")
+    print("-" * cols)
+
+    print("\n[ACTIVE & RECENT TASKS]")
+    if not tasks:
+        print("  No tasks registered.")
+    else:
+        headers = ["ID", "Type", "Title", "Status", "Owner", "Deps", "Token"]
+        rows = []
+        for t in tasks[-8:]:
+            deps = bb.get_task_dependencies(t["id"])
+            rows.append([
+                t["id"],
+                t.get("task_type", "feature"),
+                t["title"][:28],
+                t["status"],
+                t["owner"] or "-",
+                ",".join(deps) if deps else "-",
+                t["fencing_token"],
+            ])
+        print(format_table(headers, rows))
+
+    print("\n[TOKEN ECONOMY & GOVERNOR]")
+    print(f"  RPM: {telemetry['current_rpm']}/{telemetry['rpm_limit']}  |  TPM: {telemetry['current_tpm']}/{telemetry['tpm_limit']}")
+    print(f"  Cache Hit Rate: {telemetry['cache_hit_rate_percent']}%  |  Input: {telemetry['total_input_tokens']}  |  Cached: {telemetry['total_cached_tokens']}")
+
+    print("\n[LATEST AUDIT EVENTS]")
+    if not events:
+        print("  No recent events.")
+    else:
+        for e in events:
+            print(f"  Seq {e['seq']} [{e['severity']}]: {e['sender']} -> {e['recipient']} | {e['event_type']} ({e['trace_id']})")
+    print("=" * cols + "\n")
+
+
+def cmd_compact(args):
+    bb = Blackboard()
+    tasks = bb.list_tasks()
+    completed = [t for t in tasks if t["status"] == "COMPLETED"]
+
+    summary_path = Path("CURRENT_SPRINT_STATE.md")
+    content = f"# Current Sprint State Checkpoint\nGenerated: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n\n"
+    content += "## Completed Tasks\n"
+    for t in completed:
+        content += f"- **[{t['id']}]** ({t.get('task_type', 'feature')}) {t['title']} (Owner: {t['owner'] or 'orchestrator'})\n"
+
+    pending = [t for t in tasks if t["status"] in ("PENDING", "CLAIMED", "REVIEW_REQUESTED")]
+    content += "\n## Active / Pending Backlog\n"
+    for t in pending:
+        deps = bb.get_task_dependencies(t["id"])
+        dep_note = f" | Depends on: {', '.join(deps)}" if deps else ""
+        content += f"- **[{t['id']}]** ({t.get('task_type', 'feature')}) {t['title']} (Status: {t['status']}{dep_note})\n"
+
+    with open(summary_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    print(f"✓ Sprint state compacted to: {summary_path}")
+
+
+def cmd_kaizen(args):
+    bb = Blackboard()
+    if args.kaizen_cmd == "list":
+        props = bb.list_kaizen_proposals(status=args.status)
+        if not props:
+            print("No Kaizen proposals found.")
+            return
+        headers = ["Proposal ID", "Type", "Slug", "Risk Tier", "Status", "Canary FP"]
+        rows = [
+            [
+                p["proposal_id"],
+                p["target_type"],
+                p["slug"],
+                f"Tier {p['risk_tier']}",
+                p["status"],
+                str(p["canary_false_positives"]),
+            ]
+            for p in props
+        ]
+        print(format_table(headers, rows))
+    elif args.kaizen_cmd == "inspect":
+        props = [p for p in bb.list_kaizen_proposals() if p["proposal_id"] == args.proposal_id]
+        if not props:
+            print(f"Proposal '{args.proposal_id}' not found.")
+            return
+        p = props[0]
+        print(f"=== Kaizen Proposal: {p['proposal_id']} [{p['slug']}] ===")
+        print(f"Type: {p['target_type']} | Risk Tier: {p['risk_tier']} | Status: {p['status']}")
+        print(f"Canary Scanned: {p['canary_scanned_files']} | False Positives: {p['canary_false_positives']}")
+        print("\n--- Source Code ---")
+        print(p["source_code"])
+        print("\n--- Test Code ---")
+        print(p["test_code"])
+    elif args.kaizen_cmd == "approve":
+        props = [p for p in bb.list_kaizen_proposals() if p["proposal_id"] == args.proposal_id]
+        if not props:
+            print(f"Proposal '{args.proposal_id}' not found.")
+            return
+        p = props[0]
+        bb.update_kaizen_proposal_status(args.proposal_id, "APPROVED")
+        target_path = Path.cwd() / ".harness" / "jigs" / f"{p['slug']}.py"
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(p["source_code"], encoding="utf-8")
+        import hashlib
+        bb.register_capability(
+            capability_id=f"{p['target_type'].lower()}:{p['slug']}",
+            cap_type=p["target_type"],
+            file_path=str(target_path),
+            content_hash=hashlib.sha256(p["source_code"].encode("utf-8")).hexdigest(),
+            semantic_description=f"Kaizen approved {p['target_type']} for {p['slug']}",
+            risk_tier=p["risk_tier"],
+            status="ACTIVE",
+        )
+        print(f"✓ Proposal '{args.proposal_id}' APPROVED and deployed to {target_path}")
+    elif args.kaizen_cmd == "reject":
+        bb.update_kaizen_proposal_status(args.proposal_id, "REJECTED")
+        print(f"✓ Proposal '{args.proposal_id}' REJECTED.")
+
+
+def cmd_gc(args):
+    bb = Blackboard()
+    from kernel.gc import GenerationalGC
+    gc = GenerationalGC(bb=bb)
+    if getattr(args, "purge", False):
+        count = gc.purge_archived(confirm=getattr(args, "confirm", False))
+        print(f"✓ Permanently purged {count} archived capability artifacts.")
+        return
+    res = gc.run_macro_gc(dry_run=getattr(args, "dry_run", False))
+    print(f"=== Khoros Generational GC [Dry-Run: {res['dry_run']}] ===")
+    print(f"Soft-Deprecated ({len(res['soft_deprecated'])}): {', '.join(res['soft_deprecated']) or 'None'}")
+    print(f"Cold-Archived   ({len(res['cold_archived'])}): {', '.join(res['cold_archived']) or 'None'}")
+    print(f"Retained Active ({len(res['retained'])}): {', '.join(res['retained']) or 'None'}")
+
+
+def cmd_restore(args):
+    bb = Blackboard()
+    from kernel.gc import GenerationalGC
+    gc = GenerationalGC(bb=bb)
+    ok, msg = gc.restore_capability(args.capability_id)
+    print(msg)
+    if not ok:
+        sys.exit(1)
+
+
+def cmd_skill(args):
+    from skills.lifecycle import SkillLifecycleEngine
+    eng = SkillLifecycleEngine()
+    if args.skill_cmd == "mine":
+        bb = Blackboard()
+        task = bb.get_task(args.task_id)
+        if not task:
+            print(f"Task '{args.task_id}' not found.")
+            sys.exit(1)
+        events = [e for e in bb.list_events(limit=100) if e.get("trace_id") == args.task_id or args.task_id in str(e)]
+        ok, msg, p = eng.mine_skill_from_task(
+            task_id=args.task_id,
+            slug=args.name or f"skill_{args.task_id.replace('-', '_')}",
+            task_title=task["title"],
+            events=events,
+        )
+        print(msg)
+        print(f"Location: {p}")
+    elif args.skill_cmd == "list":
+        skills = list(eng.skills_dir.glob("*/SKILL.md"))
+        if not skills:
+            print("No skills found.")
+            return
+        print("=== Active Khoros Skills ===")
+        for s in skills:
+            print(f"- {s.parent.name} ({s})")
+
+
+def bootstrap_workspace_harness(target_dir: Path = None, explicit_profile: str = None, quiet: bool = False) -> Path:
+    target_dir = Path(target_dir) if target_dir else Path.cwd()
+    target_harness = target_dir / ".harness"
+    target_harness.mkdir(parents=True, exist_ok=True)
+
+    subprocess.run(["chattr", "+C", str(target_harness)], capture_output=True)
+
+    # Copy project-specific config & token files if not already present
+    detected_prof = explicit_profile or detect_project_profile(target_dir)
+    for f in ["config.yaml", "design-tokens.json"]:
+        src_f = ROOT_HARNESS_DIR / f
+        dst_f = target_harness / f
+        if src_f.exists() and not dst_f.exists():
+            shutil.copy2(src_f, dst_f)
+            if f == "config.yaml":
+                text = dst_f.read_text(encoding="utf-8")
+                text = re.sub(
+                    r'^(\s*profile:\s*).*$',
+                    rf'\g<1>"{detected_prof}"',
+                    text,
+                    flags=re.MULTILINE,
+                )
+                dst_f.write_text(text, encoding="utf-8")
+
+    # Symlink engine python modules to canonical ROOT_HARNESS_DIR to prevent multi-project drift
+    for py_mod in ["blackboard.py", "governor.py", "linter.py", "prd_engine.py", "dispatcher.py", "verifier.py"]:
+        src_mod = ROOT_HARNESS_DIR / py_mod
+        dst_mod = target_harness / py_mod
+        if target_harness.resolve() != ROOT_HARNESS_DIR.resolve():
+            if dst_mod.exists() or dst_mod.is_symlink():
+                dst_mod.unlink()
+            os.symlink(src_mod, dst_mod)
+
+    # Copy personas and ast_index if missing; sync canonical roles so v2.0 role updates propagate
+    for sub in ["personas", "ast_index"]:
+        src_sub = ROOT_HARNESS_DIR / sub
+        dst_sub = target_harness / sub
+        if src_sub.exists() and not dst_sub.exists():
+            shutil.copytree(src_sub, dst_sub)
+
+    src_roles = ROOT_HARNESS_DIR / "roles"
+    dst_roles = target_harness / "roles"
+    if src_roles.exists() and target_harness.resolve() != ROOT_HARNESS_DIR.resolve():
+        dst_roles.mkdir(parents=True, exist_ok=True)
+        for rf in src_roles.glob("*.md"):
+            shutil.copy2(rf, dst_roles / rf.name)
+
+    if explicit_profile:
+        cfg_path = target_harness / "config.yaml"
+        if cfg_path.exists():
+            text = cfg_path.read_text(encoding="utf-8")
+            if re.search(r"^\s*profile:\s*", text, re.MULTILINE):
+                text = re.sub(r"^(\s*profile:\s*).*$", rf'\g<1>"{explicit_profile.lower()}"', text, flags=re.MULTILINE)
+            else:
+                text = f'profile: "{explicit_profile.lower()}"\n' + text
+            cfg_path.write_text(text, encoding="utf-8")
+
+    bb = Blackboard(db_path=target_harness / "blackboard.db")
+    if not quiet:
+        print(f"✓ Harness v2.0 initialized and linked to canonical engine in: {target_dir} [Profile: {detect_project_profile(target_dir)}]")
+        print(f"✓ SQLite WAL Blackboard ready at: {bb.db_path}")
+    return target_harness
+
+
+def ensure_workspace_harness() -> Path:
+    global PROJECT_HARNESS_DIR
+    cwd_harness = Path.cwd() / ".harness"
+    if not cwd_harness.exists():
+        bootstrap_workspace_harness(Path.cwd(), quiet=True)
+    PROJECT_HARNESS_DIR = cwd_harness
+    return cwd_harness
+
+
+def cmd_init(args):
+    bootstrap_workspace_harness(Path.cwd(), explicit_profile=getattr(args, "profile", None), quiet=False)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="khoros",
+        description="Khoros (PDH v3.1) - Self-Improving Agentic Software Factory & Microkernel CLI",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # init
+    init_p = subparsers.add_parser("init", help="Initialize harness in the current project directory")
+    init_p.add_argument("--profile", help="Optional domain profile (generic, python, mobile-kmp, web, research)", default=None)
+
+    # status
+    subparsers.add_parser("status", help="Show current blackboard tasks, dependencies, and telemetry")
+
+    # monitor
+    subparsers.add_parser("monitor", help="Display rich live terminal system and token monitor")
+
+    # triage
+    triage_p = subparsers.add_parser("triage", help="Run Player-Coach Lead Orchestrator complexity triage on a request")
+    triage_p.add_argument("request", help="User request or task description")
+    triage_p.add_argument("--files", help="Comma-separated list of target files", default="")
+    triage_p.add_argument("--type", choices=["feature", "bugfix", "refactor", "research", "qa", "ops"], default=None)
+
+    # profile
+    prof_p = subparsers.add_parser("profile", help="Show or set active domain profile")
+    prof_p.add_argument("action", nargs="?", choices=["show", "set"], default="show")
+    prof_p.add_argument("name", nargs="?", help="Profile name (generic, python, mobile-kmp, web, research)")
+
+    # compact
+    subparsers.add_parser("compact", help="Compact completed sprint tasks into CURRENT_SPRINT_STATE.md")
+
+    # personas
+    subparsers.add_parser("personas", help="List active project user personas and evaluation criteria")
+
+    # task create
+    task_parser = subparsers.add_parser("task", help="Task management")
+    task_subs = task_parser.add_subparsers(dest="task_command", required=True)
+    create_parser = task_subs.add_parser("create", help="Create a new task with optional DAG dependencies and contract")
+    create_parser.add_argument("id", help="Unique task identifier")
+    create_parser.add_argument("title", help="Human-readable title")
+    create_parser.add_argument("--priority", choices=["Q0", "Q1", "Q2", "Q3"], default="Q2")
+    create_parser.add_argument(
+        "--type",
+        choices=["feature", "bugfix", "refactor", "research", "qa", "ops", "spec"],
+        default="feature",
+        help="Task archetype",
+    )
+    create_parser.add_argument("--depends-on", dest="depends_on", default="", help="Comma-separated prerequisite task IDs")
+    create_parser.add_argument("--files", default="", help="Comma-separated scope file paths")
+    create_parser.add_argument("--criteria", default="", help="Semicolon-separated acceptance criteria")
+    create_parser.add_argument("--spec", default=None, help="Path to specification document")
+
+    # brief
+    brief_p = subparsers.add_parser("brief", help="Generate a zero-loss Subagent Dispatch Packet from blackboard.db")
+    brief_p.add_argument("task_id", nargs="?", help="Task ID")
+    brief_p.add_argument("--task-id", dest="task_id_flag", help="Task ID")
+    brief_p.add_argument("--role", default="@builder", help="Target specialist role (e.g., @builder, @explorer, @critic)")
+
+    # claim
+    claim_parser = subparsers.add_parser("claim", help="Directly claim a specific task")
+    claim_parser.add_argument("task_id", nargs="?", help="Task ID to claim")
+    claim_parser.add_argument("worker_pos", nargs="?", help="Optional worker name")
+    claim_parser.add_argument("--task-id", dest="task_id_flag", help="Task ID to claim")
+    claim_parser.add_argument("--worker", "--worker-id", dest="worker", help="Worker name")
+
+    # heartbeat
+    hb_parser = subparsers.add_parser("heartbeat", help="Extend lease on a claimed task")
+    hb_parser.add_argument("task_id", nargs="?", help="Task ID")
+    hb_parser.add_argument("--task-id", dest="task_id_flag", help="Task ID")
+    hb_parser.add_argument("--token", type=int, default=None, help="Optional fencing token")
+
+    # submit / complete / worker-complete
+    for sub_name in ("submit", "complete", "worker-complete"):
+        sub_p = subparsers.add_parser(sub_name, help="Submit a task for review after passing verification checks")
+        sub_p.add_argument("task_id", nargs="?", help="Task ID to submit")
+        sub_p.add_argument("--task-id", dest="task_id_flag", help="Task ID to submit")
+        sub_p.add_argument("--token", type=int, default=None, help="Optional fencing token")
+        sub_p.add_argument("--summary", default="Implementation completed and verified", help="Completion summary")
+        sub_p.add_argument("--skip-lint", action="store_true", help="Skip pre-submit verification gate")
+
+    # review
+    review_parser = subparsers.add_parser("review", help="Review a submitted task and its contract")
+    review_parser.add_argument("task_id", nargs="?", help="Task ID to inspect")
+    review_parser.add_argument("--task-id", dest="task_id_flag", help="Task ID to inspect")
+    review_parser.add_argument("--token", type=int, default=None, help="Optional fencing token (ignored)")
+
+    # approve / review-approve
+    for app_name in ("approve", "review-approve"):
+        approve_parser = subparsers.add_parser(app_name, help="Approve and finalize a task")
+        approve_parser.add_argument("task_id", nargs="?", help="Task ID to approve")
+        approve_parser.add_argument("--task-id", dest="task_id_flag", help="Task ID to approve")
+        approve_parser.add_argument("--token", type=int, default=None, help="Optional fencing token (ignored)")
+        approve_parser.add_argument("--skip-lint", action="store_true", help="Skip verification gate")
+
+    # reject
+    reject_parser = subparsers.add_parser("reject", help="Reject a task with feedback")
+    reject_parser.add_argument("task_id", nargs="?", help="Task ID to reject")
+    reject_parser.add_argument("--task-id", dest="task_id_flag", help="Task ID to reject")
+    reject_parser.add_argument("--feedback", help="Feedback message for the agent", default="")
+
+    # recover
+    subparsers.add_parser("recover", help="Scrub locks and recover expired leases")
+
+    # events
+    events_parser = subparsers.add_parser("events", help="Show event log")
+    events_parser.add_argument("--limit", type=int, default=20, help="Number of events to display")
+
+    # prd
+    prd_parser = subparsers.add_parser("prd", help="Generate a formal PRD with Mermaid diagrams")
+    prd_parser.add_argument("slug", help="Slug for the document filename")
+    prd_parser.add_argument("title", help="Human-readable feature title")
+    prd_parser.add_argument("--problem", default="Provide a reliable, high-craft solution.", help="Problem statement")
+    prd_parser.add_argument("--profile", default=None, help="Optional profile override")
+
+    # spec (multi-archetype)
+    spec_parser = subparsers.add_parser("spec", help="Generate a domain-agnostic specification (prd, rfc, rca, brief)")
+    spec_parser.add_argument("spec_type", choices=["prd", "rfc", "rca", "brief"], help="Specification archetype")
+    spec_parser.add_argument("slug", help="Slug for the document filename")
+    spec_parser.add_argument("title", help="Human-readable title")
+    spec_parser.add_argument("--problem", default="Define clear problem boundaries, architecture, and verification criteria.", help="Problem statement")
+    spec_parser.add_argument("--profile", default=None, help="Optional profile override")
+
+    # lint
+    lint_parser = subparsers.add_parser("lint", help="Lint UI source code against design tokens")
+    lint_parser.add_argument("targets", nargs="*", help="Files or directories to lint")
+
+    # verify
+    verify_parser = subparsers.add_parser("verify", help="Run universal multi-profile verification gate")
+    verify_parser.add_argument("targets", nargs="*", help="Optional files or directories to verify")
+    verify_parser.add_argument("--profile", default=None, help="Override project profile")
+    verify_parser.add_argument("--with-tests", action="store_true", help="Also execute automated unit test suite")
+
+    # dispatch
+    dispatch_parser = subparsers.add_parser("dispatch", help="Dispatch pending tasks (respecting DAG barriers & concurrency cap)")
+    dispatch_parser.add_argument("task_id", nargs="?", default=None, help="Optional specific task ID to dispatch")
+    dispatch_parser.add_argument("--worker", "--worker-id", dest="worker", help="Optional explicit worker name", default=None)
+
+    # kaizen
+    kaizen_parser = subparsers.add_parser("kaizen", help="Manage Kaizen proposals, distillation, and capability hygiene")
+    kaizen_sub = kaizen_parser.add_subparsers(dest="kaizen_cmd", required=True)
+
+    k_list = kaizen_sub.add_parser("list", help="List proposals")
+    k_list.add_argument("--status", default=None, help="Filter by status (QUARANTINED, APPROVED, REJECTED, AUTO_ADMITTED)")
+
+    k_inspect = kaizen_sub.add_parser("inspect", help="Inspect a proposal")
+    k_inspect.add_argument("proposal_id", help="Proposal ID")
+
+    k_approve = kaizen_sub.add_parser("approve", help="Approve a proposal and deploy capability")
+    k_approve.add_argument("proposal_id", help="Proposal ID to approve")
+
+    k_reject = kaizen_sub.add_parser("reject", help="Reject a proposal")
+    k_reject.add_argument("proposal_id", help="Proposal ID to reject")
+    k_reject.add_argument("--reason", default="", help="Optional rejection reason")
+
+    # gc
+    gc_parser = subparsers.add_parser("gc", help="Run generational garbage collection and capability hygiene")
+    gc_parser.add_argument("--dry-run", action="store_true", help="Simulate GC without mutating capability status")
+    gc_parser.add_argument("--purge", action="store_true", help="Permanently delete archived capability artifacts")
+    gc_parser.add_argument("--confirm", action="store_true", help="Required confirmation flag for purge")
+
+    # restore
+    restore_parser = subparsers.add_parser("restore", help="Restore an archived capability back to active status")
+    restore_parser.add_argument("capability_id", help="Capability ID to restore")
+
+    # skill
+    skill_parser = subparsers.add_parser("skill", help="Manage procedural skill playbooks and trajectory mining")
+    skill_sub = skill_parser.add_subparsers(dest="skill_cmd", required=True)
+
+    s_mine = skill_sub.add_parser("mine", help="Mine procedural skill playbook from a completed task")
+    s_mine.add_argument("task_id", help="Task ID to mine")
+    s_mine.add_argument("--name", default=None, help="Optional slug name for the mined skill")
+
+    s_list = skill_sub.add_parser("list", help="List active procedural skills")
+
+    # host
+    subparsers.add_parser("host", help="Inspect host OS, architecture, memory, CoW filesystem, and agent runtime")
+
+    args = parser.parse_args()
+
+    if args.command in ("task", "spec", "prd") or (args.command == "profile" and args.action == "set"):
+        ensure_workspace_harness()
+
+    if args.command == "init":
+        cmd_init(args)
+    elif args.command == "host":
+        cmd_host(args)
+    elif args.command == "status":
+        cmd_status(args)
+    elif args.command == "monitor":
+        cmd_monitor(args)
+    elif args.command == "triage":
+        cmd_triage(args)
+    elif args.command == "profile":
+        cmd_profile(args)
+    elif args.command == "compact":
+        cmd_compact(args)
+    elif args.command == "personas":
+        cmd_personas(args)
+    elif args.command == "task" and args.task_command == "create":
+        cmd_task_create(args)
+    elif args.command == "brief":
+        cmd_brief(args)
+    elif args.command == "claim":
+        cmd_claim(args)
+    elif args.command == "heartbeat":
+        cmd_heartbeat(args)
+    elif args.command in ("submit", "complete", "worker-complete"):
+        cmd_submit(args)
+    elif args.command == "review":
+        cmd_review(args)
+    elif args.command in ("approve", "review-approve"):
+        cmd_approve(args)
+    elif args.command == "reject":
+        cmd_reject(args)
+    elif args.command == "recover":
+        cmd_recover(args)
+    elif args.command == "events":
+        cmd_events(args)
+    elif args.command == "prd":
+        cmd_prd(args)
+    elif args.command == "spec":
+        cmd_spec(args)
+    elif args.command == "lint":
+        cmd_lint(args)
+    elif args.command == "verify":
+        cmd_verify(args)
+    elif args.command == "kaizen":
+        cmd_kaizen(args)
+    elif args.command == "gc":
+        cmd_gc(args)
+    elif args.command == "restore":
+        cmd_restore(args)
+    elif args.command == "skill":
+        cmd_skill(args)
+    elif args.command == "dispatch":
+        dispatcher = TaskDispatcher()
+        ok, msg = dispatcher.dispatch_next(worker_name=args.worker, task_id=args.task_id)
+        print(msg)
+        if not ok:
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

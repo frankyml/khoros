@@ -67,13 +67,22 @@ bin/harness brief task-001 --role "@critic"
 
 ---
 
-### Kaizen & Self-Improvement Commands
+### Kaizen, Skills & Generational GC (v3.1)
 ```bash
-# List quarantined Kaizen proposals synthesized by the offline loop
-bin/harness kaizen list
+# Kaizen proposal lifecycle & Rule of Two distillation
+bin/khoros kaizen list                    # List quarantined proposals
+bin/khoros kaizen inspect <proposal-id>   # Inspect proposal diff and canary results
+bin/khoros kaizen approve <proposal-id>   # Promote proposal into production jigs/rules
+bin/khoros kaizen reject <proposal-id>    # Reject proposal
 
-# Approve a quarantined proposal to promote it into permanent capsule rules or jigs
-bin/harness kaizen approve prop-2026-001
+# Skill trajectory mining & lifecycle
+bin/khoros skill list                     # List active workspace skills
+bin/khoros skill inspect <slug>           # Inspect skill documentation and triggers
+bin/khoros skill mine <task-id> <slug>    # Mine verified task trace into a skill
+
+# Generational GC & capability restoration
+bin/khoros gc                             # Run Macro-GC (EWMA utility decay & 3-phase eviction)
+bin/khoros restore <capability-id>        # Restore archived capability back to ACTIVE
 ```
 
 ---

@@ -86,7 +86,7 @@ sequenceDiagram
    Acceptance criteria are signed with a SHA-256 hash by the Squad Lead. The Critic is programmatically barred from rejecting patches based on personal preferences not declared in the contract.
 3. **Oscillation Distance Watchdog**:  
    The Kernel monitors the edit distance between alternating iterations:
-   $$\mathcal{D}(P_k, P_{k-2}) < \epsilon \implies \text{TRIP\_CIRCUIT\_BREAKER("Oscillatory Rework Detected")}$$
+   $$\mathcal{D}(P_k, P_{k-2}) < \epsilon \implies \text{Trip Circuit Breaker (Oscillatory Rework Detected)}$$
 4. **Degrading Token Budget Quota**:  
    Each review iteration cuts the available token budget in half ($B_k = B_0 \cdot 2^{-(k-1)}$), forcing concise, targeted fixes rather than circular debates.
 

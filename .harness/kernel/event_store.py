@@ -14,6 +14,19 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 
+class CapabilityEventType:
+    PROPOSED = "CAPABILITY_PROPOSED"
+    VERIFIED = "CAPABILITY_VERIFIED"
+    CANARY_RUN = "CAPABILITY_CANARY_RUN"
+    ADMITTED = "CAPABILITY_ADMITTED"
+    INVOKED = "CAPABILITY_INVOKED"
+    FAILURE_LOGGED = "FAILURE_SIGNATURE_LOGGED"
+    DISTILLATION_TRIPPED = "KAIZEN_DISTILLATION_TRIPPED"
+    DEPRECATED = "CAPABILITY_DEPRECATED"
+    ARCHIVED = "CAPABILITY_ARCHIVED"
+    PURGED = "CAPABILITY_PURGED"
+
+
 class KernelEventStore:
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)

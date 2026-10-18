@@ -88,19 +88,47 @@ PDH v3.0 bridges modern **Agentic Graph Engineering**, **Microkernel OS Design**
 
 ---
 
+## 4. Khoros v3.1: Autonomous Capabilities & Library Hygiene
+
+### Context & Motivations
+While v3.0 established the software factory microkernel and offline Kaizen loop, capabilities (tools and skills) still required manual authoring or human-in-the-loop intervention for every addition. As agents operate continuously, they risk accumulating stale tools, context-polluting prompt guides, and experiencing prompt injection or runaway synthesis. 
+
+Khoros v3.1 completes the vision with **autonomous capability synthesis, closed-loop evolutionary refinement, and generational garbage collection**. Furthermore, the primary CLI executable was promoted from `harness` to `khoros` (retaining `harness` as a backwards-compatible alias).
+
+### Key Milestones
+1. **CLI Migration & Backwards Compatibility**:
+   - `bin/khoros` established as the primary executable; `bin/harness` maintained as an aliased symlink.
+2. **Tiered Risk-Gated Tool Synthesis**:
+   - Synthesized tools are classified via AST analysis into Tier 1 (AST / read-only), Tier 2 (worktree file utilities), and Tier 3 (mutating shell/subprocess).
+3. **Clean-Trunk Canary Verification ($\text{FP} = 0$)**:
+   - Enforces a zero false positive invariant on clean trunk production code before admitting any synthesized AST jig.
+4. **"Rule of Two" ($N=2$) Pareto Distillation**:
+   - Normalized AST failure signatures trigger automated Poka-Yoke AST jig creation upon recurring at frequency $N \ge 2$, mechanically enforcing **Code > Prompt**.
+5. **Static Prefix Pinning & Dynamic Compaction**:
+   - Pinned 45% static prefix ensures $\ge 85\%$ KV-cache reuse.
+   - Fold, Mask, and Prune algorithms reduce compiler dumps by $\ge 98.5\%$ when working memory exceeds 85% high watermark.
+6. **10-Operator Evolutionary Skill Grammar & Trajectory Mining**:
+   - Skills evolve through a 10-operator grammar (`op_add`, `op_refine`, `op_merge`, `op_split`, etc.).
+   - `khoros skill mine` distills completed task trajectories into permanent reusable skills.
+7. **Generational Garbage Collection & 3-Phase Safe Eviction**:
+   - **Station 4 Micro-GC**: Sub-millisecond teardown of worktrees, ephemeral scratch scripts, and CAS file leases.
+   - **Macro-GC**: EWMA utility decay ($U_t = 0.95 U_{t-1} + 0.05 \mathbb{I}$) with 3-phase lifecycle (Active $\to$ Soft Deprecated $\to$ Cold Storage Archive $\to$ Permanent Purge) and instant restoration (`khoros restore`).
+
+---
+
 ## Iteration Summary Matrix
 
-| Metric / Dimension | PDH v1.0 | PDH v2.0 | PDH v3.0 |
-|---|---|---|---|
-| **Domain Scope** | Android / KMP only | Multi-profile (configurable) | Task-Agnostic Microkernel |
-| **State Persistence** | None (ephemeral bash) | SQLite WAL Task CRUD | Event-Sourced WAL + Projections |
-| **Execution Topology** | Linear pipeline | Player-Coach DAG | Cellular Dynamic Squads |
-| **Concurrency Isolation** | Single-threaded | Token/lease tracking (shared dir) | Hybrid Git Worktrees + Cache Symlinks |
-| **Quality Control** | Post-hoc CLI assertion | Downstream Critic audit | In-Station Poka-Yoke Jigs (*Jidoka*) |
-| **Anti-Deadlock Guards** | Manual human break | Lease timeout only | $N \le 3$ Circuit Breaker + Oscillation Watchdog |
-| **Self-Improvement** | None | Manual PRD/RCA docs | Automated Causal DAG + Kaizen Quarantine |
-| **Rule Budgeting** | Unbounded markdown | Growing prompt files | Bounded Pareto Budget ($K \le 12$) |
+| Metric / Dimension | PDH v1.0 | PDH v2.0 | PDH v3.0 | Khoros v3.1 |
+|---|---|---|---|---|
+| **CLI Binary** | `harness` (bash) | `harness` (python) | `harness` (python) | `khoros` (primary) / `harness` (alias) |
+| **Domain Scope** | Android / KMP only | Multi-profile | Task-Agnostic Microkernel | Agnostic + Self-Synthesizing |
+| **Tool Synthesis** | Manual only | Manual jigs | Offline Kaizen Proposals | Tiered AST Synthesis + Clean-Trunk Canary |
+| **Distillation Threshold** | None | Ad-hoc PRDs | Manual Kaizen review | Rule of Two ($N \ge 2$) AST Automation |
+| **Cognitive Memory** | Unbounded prompt | Growing markdown | Pareto Cap ($K \le 12$) | Pinned Prefix ($\ge 85\%$ KV hit) + Fold/Mask/Prune |
+| **Skill Evolution** | None | Static docs | Rule updates | 10-Operator Evolutionary Grammar + Mining |
+| **Library Hygiene** | Manual purge | Manual cleanup | None | Generational GC (Micro-GC + EWMA Macro-GC) |
 
 ---
 
 *Proceed to [02. Core Architecture: The Microkernel](02-Core-Architecture-The-Microkernel.md) to inspect the microkernel runtime and event store.*
+

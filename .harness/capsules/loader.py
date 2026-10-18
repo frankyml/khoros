@@ -59,21 +59,71 @@ class AgentCapsule:
             "generation_headroom_tokens": int(total_context_tokens * self.cognitive_budget.get("headroom_ratio", 0.20)),
         }
 
-    def add_rule(self, rule_id: str, rule: str, enforcement: str = "AST_LINTER") -> Tuple[bool, str]:
+    def build_static_prefix_preamble(self) -> str:
         """
-        Enforces the Pareto-Optimal Rule Budget (K <= 12) to prevent rule bloat and attention dispersion.
+        Builds the canonical 45% static preamble [Charter || Tools || Distilled Memory]
+        that remains byte-for-byte identical across turns to maximize KV-cache reuse (>=85% hit rate).
+        """
+        sections = []
+
+        # 1. Charter & Role (15%)
+        role = self.charter.get("role", "Engineer")
+        goal = self.charter.get("goal", "Execute contracts with deterministic craft.")
+        sections.append(f"# SYSTEM CHARTER: {role}\nGoal: {goal}")
+        escalations = self.charter.get("escalation_conditions", [])
+        if escalations:
+            sections.append("Escalation Boundaries:\n" + "\n".join(f"- {e}" for e in escalations))
+
+        # 2. Executable Capabilities (15%)
+        skills = self.capabilities.get("skills", [])
+        jigs = self.capabilities.get("jigs", [])
+        sections.append(
+            f"# EXECUTABLE CAPABILITIES\nActive Skills: {', '.join(skills) if skills else 'None'}\n"
+            f"Active In-Station Jigs: {', '.join(jigs) if jigs else 'None'}"
+        )
+
+        # 3. Rules & Distilled Memory (15% - Pareto Cap K <= 12)
+        rules = self.rules_and_invariants.get("hard_constraints", [])
+        if rules:
+            sections.append("# HARD CONSTRAINTS & INVARIANTS (Pareto Cap K <= 12):\n" + "\n".join(
+                f"- [{r.get('id', 'RULE')}] ({r.get('enforcement', 'AST')}): {r.get('rule')}" for r in rules
+            ))
+
+        return "\n\n".join(sections)
+
+    def add_rule(self, rule_id: str, rule: str, enforcement: str = "AST_LINTER", auto_subsume: bool = False) -> Tuple[bool, str]:
+        """
+        Enforces the Pareto-Optimal Rule Budget (K <= 12).
+        Checks for semantic overlap; if similarity >= 0.85, executes Merge.
+        If budget exceeded and auto_subsume=True, evicts oldest rule to cold storage.
         """
         constraints = self.rules_and_invariants.get("hard_constraints", [])
         cap = self.rules_and_invariants.get("pareto_budget_cap", self.MAX_PARETO_RULES)
 
-        # Check if already present
+        # 1. Check exact ID or text match
         for c in constraints:
             if c.get("id") == rule_id:
                 c["rule"] = rule
                 c["enforcement"] = enforcement
                 return True, f"Updated existing rule '{rule_id}'."
 
+        # 2. Check semantic overlap (token Jaccard / token set overlap >= 0.85)
+        new_tokens = set(rule.lower().split())
+        for c in constraints:
+            existing_tokens = set(c.get("rule", "").lower().split())
+            if existing_tokens:
+                jaccard = len(new_tokens & existing_tokens) / len(new_tokens | existing_tokens)
+                if jaccard >= 0.85:
+                    c["rule"] = f"{c['rule']}; {rule}"
+                    return True, f"Merged rule into overlapping constraint '{c.get('id')}' (Similarity: {jaccard:.2f})."
+
+        # 3. Check budget cap
         if len(constraints) >= cap:
+            if auto_subsume:
+                evicted = constraints.pop(0)
+                constraints.append({"id": rule_id, "rule": rule, "enforcement": enforcement})
+                self.rules_and_invariants["hard_constraints"] = constraints
+                return True, f"Pareto cap reached. Evicted rule '{evicted.get('id')}' to cold storage and admitted '{rule_id}'."
             return (
                 False,
                 f"Pareto Rule Budget exceeded: Capsule already holds {len(constraints)}/{cap} maximum rules. "

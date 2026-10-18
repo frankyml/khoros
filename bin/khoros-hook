@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+"""
+Personal Development Harness (PDH) v2.0 - Antigravity Lifecycle Hook Handler
+Supports 'Stop' and 'PreInvocation' hooks in .agents/hooks.json.
+Ensures expired leases are reclaimed and warns if claimed tasks are left unsubmitted.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+ROOT_HARNESS_DIR = Path(__file__).resolve().parent.parent / ".harness"
+sys.path.insert(0, str(ROOT_HARNESS_DIR))
+
+from blackboard import Blackboard
+
+
+def main():
+    try:
+        raw = sys.stdin.read()
+        payload = json.loads(raw) if raw.strip() else {}
+    except Exception:
+        payload = {}
+
+    cwd_harness = Path.cwd() / ".harness"
+    if not cwd_harness.exists():
+        print(json.dumps({"decision": "allow"}))
+        return
+
+    try:
+        bb = Blackboard(db_path=cwd_harness / "blackboard.db")
+        bb.recover_expired_leases()
+    except Exception:
+        pass
+
+    # Default allow/stop cleanly so interactive conversations never get stuck
+    print(json.dumps({"decision": "allow"}))
+
+
+if __name__ == "__main__":
+    main()

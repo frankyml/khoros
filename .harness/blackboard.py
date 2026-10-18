@@ -85,6 +85,72 @@ class Blackboard:
                     cached_tokens INTEGER NOT NULL,
                     output_tokens INTEGER NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS file_leases (
+                    file_path TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    holder_capsule TEXT NOT NULL,
+                    lease_expires_at REAL NOT NULL,
+                    fencing_token INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS capability_registry (
+                    capability_id TEXT PRIMARY KEY,
+                    type TEXT NOT NULL,                     -- JIG, CLI_TOOL, SKILL, DYNAMIC_CAPSULE
+                    generation INTEGER NOT NULL DEFAULT 1,  -- 0=Ephemeral, 1=Staged, 2=Canonical
+                    risk_tier INTEGER NOT NULL DEFAULT 1,   -- 1=AST/Read-only, 2=Worktree file, 3=Shell/Mutating
+                    version TEXT NOT NULL DEFAULT '1.0.0',
+                    file_path TEXT NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    semantic_description TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'ACTIVE',  -- ACTIVE, SOFT_DEPRECATED, COLD_ARCHIVE, PURGED
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS capability_telemetry (
+                    capability_id TEXT PRIMARY KEY,
+                    invocations_total INTEGER NOT NULL DEFAULT 0,
+                    invocations_success INTEGER NOT NULL DEFAULT 0,
+                    invocations_failed INTEGER NOT NULL DEFAULT 0,
+                    last_invoked_at REAL NOT NULL,
+                    utility_score REAL NOT NULL DEFAULT 1.0,
+                    FOREIGN KEY(capability_id) REFERENCES capability_registry(capability_id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS capability_dependencies (
+                    source_id TEXT NOT NULL,
+                    depends_on_id TEXT NOT NULL,
+                    relation_type TEXT NOT NULL DEFAULT 'DEPENDS_ON', -- COMPOSES, CALLS, SHADOWS, DEPENDS_ON
+                    PRIMARY KEY(source_id, depends_on_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS failure_signatures (
+                    signature_id TEXT PRIMARY KEY,
+                    ast_structural_hash TEXT NOT NULL,
+                    error_type TEXT NOT NULL,
+                    exemplar_diff TEXT NOT NULL,
+                    recurrence_count INTEGER NOT NULL DEFAULT 1,
+                    first_seen_at REAL NOT NULL,
+                    last_seen_at REAL NOT NULL,
+                    distillation_status TEXT NOT NULL DEFAULT 'PENDING' -- PENDING, DISTILLED, DISMISSED
+                );
+                CREATE INDEX IF NOT EXISTS idx_failure_sig_hash ON failure_signatures(ast_structural_hash);
+
+                CREATE TABLE IF NOT EXISTS kaizen_proposals (
+                    proposal_id TEXT PRIMARY KEY,
+                    target_type TEXT NOT NULL,              -- JIG, TOOL, SKILL
+                    slug TEXT NOT NULL,
+                    risk_tier INTEGER NOT NULL DEFAULT 1,   -- 1, 2, 3
+                    source_code TEXT NOT NULL,
+                    test_code TEXT NOT NULL,
+                    attribution_vector TEXT NOT NULL DEFAULT '[]', -- JSON: [alpha_spec, alpha_impl, alpha_eval, alpha_tool]
+                    canary_scanned_files INTEGER NOT NULL DEFAULT 0,
+                    canary_false_positives INTEGER NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT 'QUARANTINED', -- QUARANTINED, APPROVED, REJECTED, AUTO_ADMITTED
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
                 """
             )
             # Backwards-compatible migration for v1.0 databases
@@ -377,6 +443,206 @@ class Blackboard:
         with self._get_connection() as conn:
             cursor = conn.execute("SELECT * FROM events ORDER BY seq DESC LIMIT ?;", (limit,))
             return [dict(r) for r in cursor.fetchall()]
+
+    def register_capability(
+        self,
+        capability_id: str,
+        cap_type: str,
+        file_path: str,
+        content_hash: str,
+        semantic_description: str,
+        risk_tier: int = 1,
+        version: str = "1.0.0",
+        generation: int = 1,
+        status: str = "ACTIVE",
+    ) -> None:
+        now = time.time()
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO capability_registry (
+                    capability_id, type, generation, risk_tier, version, file_path, content_hash, semantic_description, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(capability_id) DO UPDATE SET
+                    type = excluded.type,
+                    generation = excluded.generation,
+                    risk_tier = excluded.risk_tier,
+                    version = excluded.version,
+                    file_path = excluded.file_path,
+                    content_hash = excluded.content_hash,
+                    semantic_description = excluded.semantic_description,
+                    status = excluded.status,
+                    updated_at = excluded.updated_at;
+                """,
+                (capability_id, cap_type, generation, risk_tier, version, file_path, content_hash, semantic_description, status, now, now),
+            )
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO capability_telemetry (capability_id, invocations_total, invocations_success, invocations_failed, last_invoked_at, utility_score)
+                VALUES (?, 0, 0, 0, ?, 1.0);
+                """,
+                (capability_id, now),
+            )
+
+    def get_capability(self, capability_id: str) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT c.*, t.invocations_total, t.invocations_success, t.invocations_failed, t.utility_score, t.last_invoked_at
+                FROM capability_registry c
+                LEFT JOIN capability_telemetry t ON c.capability_id = t.capability_id
+                WHERE c.capability_id = ?;
+                """,
+                (capability_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def list_capabilities(self, status: Optional[str] = "ACTIVE", cap_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        query = """
+            SELECT c.*, t.invocations_total, t.invocations_success, t.invocations_failed, t.utility_score, t.last_invoked_at
+            FROM capability_registry c
+            LEFT JOIN capability_telemetry t ON c.capability_id = t.capability_id
+            WHERE 1=1
+        """
+        params: List[Any] = []
+        if status:
+            query += " AND c.status = ?"
+            params.append(status)
+        if cap_type:
+            query += " AND c.type = ?"
+            params.append(cap_type)
+        query += " ORDER BY c.created_at ASC;"
+        with self._get_connection() as conn:
+            cursor = conn.execute(query, params)
+            return [dict(r) for r in cursor.fetchall()]
+
+    def record_capability_invocation(self, capability_id: str, success: bool = True, lambda_decay: float = 0.95) -> float:
+        now = time.time()
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT utility_score, invocations_total, invocations_success, invocations_failed FROM capability_telemetry WHERE capability_id = ?;",
+                (capability_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                u_score = 1.0
+                inv_total = 0
+                inv_succ = 0
+                inv_fail = 0
+            else:
+                u_score = row["utility_score"]
+                inv_total = row["invocations_total"]
+                inv_succ = row["invocations_success"]
+                inv_fail = row["invocations_failed"]
+
+            # EWMA utility decay: Ut = lambda * Ut-1 + (1 - lambda) * I
+            indicator = 1.0 if success else -0.5
+            new_u_score = max(0.0, min(1.0, (lambda_decay * u_score) + ((1.0 - lambda_decay) * indicator)))
+            inv_total += 1
+            if success:
+                inv_succ += 1
+            else:
+                inv_fail += 1
+
+            conn.execute(
+                """
+                INSERT INTO capability_telemetry (capability_id, invocations_total, invocations_success, invocations_failed, last_invoked_at, utility_score)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(capability_id) DO UPDATE SET
+                    invocations_total = excluded.invocations_total,
+                    invocations_success = excluded.invocations_success,
+                    invocations_failed = excluded.invocations_failed,
+                    last_invoked_at = excluded.last_invoked_at,
+                    utility_score = excluded.utility_score;
+                """,
+                (capability_id, inv_total, inv_succ, inv_fail, now, new_u_score),
+            )
+            return new_u_score
+
+    def log_failure_signature(self, ast_structural_hash: str, error_type: str, exemplar_diff: str) -> Tuple[str, int]:
+        now = time.time()
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT signature_id, recurrence_count FROM failure_signatures WHERE ast_structural_hash = ?;",
+                (ast_structural_hash,),
+            )
+            row = cursor.fetchone()
+            if row:
+                sig_id = row["signature_id"]
+                new_count = row["recurrence_count"] + 1
+                conn.execute(
+                    """
+                    UPDATE failure_signatures
+                    SET recurrence_count = ?, last_seen_at = ?, exemplar_diff = ?
+                    WHERE signature_id = ?;
+                    """,
+                    (new_count, now, exemplar_diff, sig_id),
+                )
+                return sig_id, new_count
+            else:
+                import uuid
+                sig_id = f"sig-{uuid.uuid4().hex[:8]}"
+                conn.execute(
+                    """
+                    INSERT INTO failure_signatures (signature_id, ast_structural_hash, error_type, exemplar_diff, recurrence_count, first_seen_at, last_seen_at)
+                    VALUES (?, ?, ?, ?, 1, ?, ?);
+                    """,
+                    (sig_id, ast_structural_hash, error_type, exemplar_diff, now, now),
+                )
+                return sig_id, 1
+
+    def create_kaizen_proposal(
+        self,
+        proposal_id: str,
+        target_type: str,
+        slug: str,
+        source_code: str,
+        test_code: str,
+        risk_tier: int = 1,
+        attribution_vector: Optional[List[float]] = None,
+        canary_scanned: int = 0,
+        canary_fp: int = 0,
+        status: str = "QUARANTINED",
+    ) -> None:
+        now = time.time()
+        attr_json = json.dumps(attribution_vector or [0.0, 1.0, 0.0, 0.0])
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO kaizen_proposals (
+                    proposal_id, target_type, slug, risk_tier, source_code, test_code, attribution_vector, canary_scanned_files, canary_false_positives, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(proposal_id) DO UPDATE SET
+                    source_code = excluded.source_code,
+                    test_code = excluded.test_code,
+                    canary_scanned_files = excluded.canary_scanned_files,
+                    canary_false_positives = excluded.canary_false_positives,
+                    status = excluded.status,
+                    updated_at = excluded.updated_at;
+                """,
+                (proposal_id, target_type, slug, risk_tier, source_code, test_code, attr_json, canary_scanned, canary_fp, status, now, now),
+            )
+
+    def list_kaizen_proposals(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        query = "SELECT * FROM kaizen_proposals"
+        params: List[Any] = []
+        if status:
+            query += " WHERE status = ?"
+            params.append(status)
+        query += " ORDER BY created_at DESC;"
+        with self._get_connection() as conn:
+            cursor = conn.execute(query, params)
+            return [dict(r) for r in cursor.fetchall()]
+
+    def update_kaizen_proposal_status(self, proposal_id: str, status: str) -> bool:
+        now = time.time()
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "UPDATE kaizen_proposals SET status = ?, updated_at = ? WHERE proposal_id = ?;",
+                (status, now, proposal_id),
+            )
+            return cursor.rowcount > 0
 
     def recover_expired_leases(self) -> int:
         now = time.time()

@@ -33,13 +33,22 @@ class TokenGovernor:
         rpm_limit: int = 60,
         tpm_limit: int = 1000000,
         reserved_headroom_ratio: float = 0.25,
-        min_cache_prefix_tokens: int = 32768,
+        min_cache_prefix_tokens: Optional[int] = None,
         db_path: Optional[Path] = None,
     ):
         self.rpm_limit = rpm_limit
         self.tpm_limit = tpm_limit
         self.reserved_headroom_ratio = reserved_headroom_ratio
-        self.min_cache_prefix_tokens = min_cache_prefix_tokens
+
+        if min_cache_prefix_tokens is not None:
+            self.min_cache_prefix_tokens = min_cache_prefix_tokens
+        else:
+            try:
+                from kernel.host import get_host_environment
+                self.min_cache_prefix_tokens = get_host_environment().get("cache_prefix_tokens", 32768)
+            except Exception:
+                self.min_cache_prefix_tokens = 32768
+
         self.harness_dir = resolve_harness_dir()
         self.db_path = Path(db_path) if db_path else (self.harness_dir / "blackboard.db")
         self._init_table()

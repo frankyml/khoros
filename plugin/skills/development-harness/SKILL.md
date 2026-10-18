@@ -1,17 +1,17 @@
 ---
 name: development-harness
 description: >-
-  Autonomous Development Harness (PDH v2.0) with Player-Coach Lead Orchestrator (@lead)
+  Khoros (formerly Personal Development Harness) v3.1 with Player-Coach Lead Orchestrator (@lead)
   for generic software engineering, research, Python/CLI, web, and Android/KMP projects
   (Fluffi, Gainsmith, personal-development-harness, or any workspace with .harness/).
   Covers adaptive complexity triage, multi-archetype specs (PRD/RFC/RCA/Brief), SQLite WAL
   blackboard DAG orchestration, zero-loss subagent task contracts, universal multi-profile
-  verification gates, design token linting, 60/120Hz frame pacing, and persona evaluation.
+  verification gates, autonomous capability synthesis, evolutionary skill grammar, and generational GC.
 ---
 
-# Development Harness Skill (PDH v2.0 — Player-Coach Lead Orchestrator)
+# Development Harness Skill (Khoros v3.1 — Player-Coach Lead Orchestrator)
 
-Activate this skill automatically whenever working in any workspace that contains a `.harness/` directory (`Fluffi`, `Gainsmith`, `personal-development-harness`, or any initialized project), even when the user does not explicitly mention "harness" in their prompt.
+Activate this skill automatically whenever working in any workspace that contains a `.harness/` directory (`Fluffi`, `Gainsmith`, `personal-development-harness`, or any initialized project), even when the user does not explicitly mention "harness" or "khoros" in their prompt. Primary CLI is `khoros` (with `harness` aliased for full backwards compatibility).
 
 ## 1. Operating as `@lead` (Player-Coach Orchestrator Topology)
 
@@ -19,34 +19,34 @@ When handling a user request in a `.harness/` workspace, you act as **`@lead` (L
 
 - **Triage Complexity**:
   ```bash
-  harness triage "<user request summary>" --files "file1,file2" [--type feature|bugfix|refactor|research|qa|ops]
+  khoros triage "<user request summary>" --files "file1,file2" [--type feature|bugfix|refactor|research|qa|ops]
   ```
-  - **`T0_MICRO` / `T1_SCOPED` ($\le 3$ files, single domain)**: **Direct Fast Path.** Execute directly in the main agent loop, then run `harness verify`.
+  - **`T0_MICRO` / `T1_SCOPED` ($\le 3$ files, single domain)**: **Direct Fast Path.** Execute directly in the main agent loop, then run `khoros verify`.
   - **`T2_ORCHESTRATED` / `T3_PARALLEL_DAG` (multi-file feature, architecture refactor, or broad research)**: **Subagent Fan-Out Path.**
-    1. Create a domain-appropriate spec (`harness spec <prd|rfc|rca|brief> ...`).
+    1. Create a domain-appropriate spec (`khoros spec <prd|rfc|rca|brief> ...`).
     2. Register tasks with DAG dependencies (`--depends-on`), target files (`--files`), and acceptance criteria (`--criteria`) in `blackboard.db`.
-    3. Generate a zero-telephone-game **Subagent Dispatch Packet** via `harness brief <task-id> --role <@explorer|@builder|@critic>` and pass it to `invoke_subagent` (use `Workspace="share"` for parallel `@builder` subagents; max 2 concurrent workers).
-    4. Enforce **Generator–Verifier Separation**: verify completed subagent work with `harness verify` and an independent `@critic` review before `harness approve <task-id>`.
+    3. Generate a zero-telephone-game **Subagent Dispatch Packet** via `khoros brief <task-id> --role <@explorer|@builder|@critic>` and pass it to `invoke_subagent` (use `Workspace="share"` for parallel `@builder` subagents; max 2 concurrent workers).
+    4. Enforce **Generator–Verifier Separation**: verify completed subagent work with `khoros verify` and an independent `@critic` review before `khoros approve <task-id>`.
 
 ---
 
 ## 2. Domain Profiles & Multi-Archetype Specifications
 
-PDH v2.0 decouples the core orchestration engine from domain-specific checks via profiles (`generic`, `python`, `mobile-kmp`, `web`, `research`):
+Khoros decouples the core orchestration engine from domain-specific checks via profiles (`generic`, `python`, `mobile-kmp`, `web`, `research`):
 
 - **Inspect or Switch Profile**:
   ```bash
-  harness profile show
-  harness profile set <generic|python|mobile-kmp|web|research>
+  khoros profile show
+  khoros profile set <generic|python|mobile-kmp|web|research>
   ```
 - **Create Domain-Appropriate Specifications** (`docs/<type>/<slug>.md` with validated Mermaid diagrams):
   ```bash
-  harness spec prd <slug> "<title>" --problem "<statement>"    # Product / UI Feature PRD with Personas
-  harness spec rfc <slug> "<title>" --problem "<statement>"    # Technical / Architecture RFC
-  harness spec rca <slug> "<title>" --problem "<statement>"    # Bug Root Cause Analysis & Fix Plan
-  harness spec brief <slug> "<title>" --problem "<statement>"  # Research & Synthesis Brief
+  khoros spec prd <slug> "<title>" --problem "<statement>"    # Product / UI Feature PRD with Personas
+  khoros spec rfc <slug> "<title>" --problem "<statement>"    # Technical / Architecture RFC
+  khoros spec rca <slug> "<title>" --problem "<statement>"    # Bug Root Cause Analysis & Fix Plan
+  khoros spec brief <slug> "<title>" --problem "<statement>"  # Research & Synthesis Brief
   ```
-  *(Backwards-compatible alias: `harness prd <slug> "<title>" --problem "<statement>"`)*
+  *(Backwards-compatible alias: `khoros prd <slug> "<title>" --problem "<statement>"`)*
 
 ---
 
@@ -54,10 +54,10 @@ PDH v2.0 decouples the core orchestration engine from domain-specific checks via
 
 Tasks are tracked in `./.harness/blackboard.db` (SQLite in WAL mode, monotonic fencing tokens, 30-minute lease TTL, and DAG dependency barriers):
 
-- **Check Status, Profile & DAG Dependencies**: `harness status` or `harness monitor`
+- **Check Status, Profile & DAG Dependencies**: `khoros status` or `khoros monitor`
 - **Create Task with Contract & DAG Edges**:
   ```bash
-  harness task create <task-id> "<title>" \
+  khoros task create <task-id> "<title>" \
     --priority <Q0|Q1|Q2|Q3> \
     --type <feature|bugfix|refactor|research|qa|ops> \
     --depends-on "prereq-1,prereq-2" \
@@ -67,20 +67,20 @@ Tasks are tracked in `./.harness/blackboard.db` (SQLite in WAL mode, monotonic f
   ```
 - **Generate Subagent Prompt Packet (Eliminates Telephone Game)**:
   ```bash
-  harness brief <task-id> --role @builder
+  khoros brief <task-id> --role @builder
   ```
 - **Dispatch (Enforces DAG Barriers & 2-Worker Ceiling)**:
   ```bash
-  harness dispatch [<task-id>] [--worker <name>]
+  khoros dispatch [<task-id>] [--worker <name>]
   ```
 - **Heartbeat / Submit / Review / Approve / Reject**:
   ```bash
-  harness heartbeat <task-id>
-  harness submit <task-id> --summary "<what changed and how it was verified>"
-  harness review <task-id>
-  harness approve <task-id>
-  harness reject <task-id> --feedback "<actionable reason>"
-  harness compact  # Compacts sprint state into CURRENT_SPRINT_STATE.md
+  khoros heartbeat <task-id>
+  khoros submit <task-id> --summary "<what changed and how it was verified>"
+  khoros review <task-id>
+  khoros approve <task-id>
+  khoros reject <task-id> --feedback "<actionable reason>"
+  khoros compact  # Compacts sprint state into CURRENT_SPRINT_STATE.md
   ```
 
 ---
@@ -89,12 +89,12 @@ Tasks are tracked in `./.harness/blackboard.db` (SQLite in WAL mode, monotonic f
 
 - **Run Universal Verification Pipeline** (automatically runs secret hygiene scan, UI design token linter when UI files exist, Python syntax validation, Mermaid spec checks, and optional unit tests):
   ```bash
-  harness verify [--with-tests] [targets...]
+  khoros verify [--with-tests] [targets...]
   ```
 - **UI Design System Linter** (`mobile-kmp` & `web` profiles):
   - Always reference `.harness/design-tokens.json` and project theme tokens (`FluffiTheme` / `GainsmithTheme`). Never write raw hex colors (`#...` or `Color(0x...)`) outside theme/token files, and align spacing (`padding`, `spacedBy`, `contentPadding`) to the 2dp/4dp grid.
   ```bash
-  harness lint [shared/src androidApp/src]
+  khoros lint [shared/src androidApp/src]
   ```
 - **Native Android Crash Sentinel & 60/120 Hz Assertion** (`mobile-kmp` profile):
   ```bash
@@ -103,5 +103,28 @@ Tasks are tracked in `./.harness/blackboard.db` (SQLite in WAL mode, monotonic f
   ```
 - **Synthetic Persona Evaluation**:
   ```bash
-  harness personas
+  khoros personas
+  ```
+
+---
+
+## 5. Autonomous Capability Synthesis, Evolution & Generational GC (v3.1)
+
+- **Kaizen Distillation & Proposal Management**:
+  ```bash
+  khoros kaizen list                # Inspect quarantined Kaizen proposals
+  khoros kaizen inspect <prop-id>   # View AST diff, canary verification & attribution
+  khoros kaizen approve <prop-id>   # Promote proposal to canonical jigs / rules
+  khoros kaizen reject <prop-id>    # Reject proposal
+  ```
+- **Skill Lifecycle & Trajectory Mining**:
+  ```bash
+  khoros skill list                 # List active local skills
+  khoros skill inspect <slug>       # View skill instructions and metadata
+  khoros skill mine <task-id> <slug> # Mine verified execution trace into a reusable skill
+  ```
+- **Generational GC & Capability Restoration**:
+  ```bash
+  khoros gc                         # Run Macro-GC (EWMA utility decay & 3-phase safe eviction)
+  khoros restore <capability-id>    # Restore soft-deprecated or cold-archived capability
   ```
