@@ -1,0 +1,12 @@
+{
+  "pdh-lease-guard": {
+    "enabled": true,
+    "Stop": [
+      {
+        "type": "command",
+        "command": "bin/harness-hook",
+        "timeout": 5
+      }
+    ]
+  }
+}

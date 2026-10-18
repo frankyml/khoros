@@ -1,14 +1,38 @@
-# Personal Development Harness - Git Ignore
-.harness/blackboard.db*
+# Khoros / Harness Local State & Databases
+.harness/*.db*
 .harness/worktrees/
+.harness/cache/
 .harness/archives/
 .harness/ast_index/symbols.db*
 .harness/*.log
+.harness/__pycache__/
+
+# Secrets & Environment Files
+.env
+.env.*
+*.pem
+*.key
+*.keystore
+id_rsa*
+id_ed25519*
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
 
 # Android & Gradle
 .gradle/
 build/
-app/build/
+*/build/
 *.apk
 *.aab
 
@@ -16,17 +40,13 @@ app/build/
 .idea/
 *.iml
 .kotlin/
-shared/build/
-composeApp/build/
-iosApp/build/
 
-# Python & Environment
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-env/
+# Node & Web
+node_modules/
+.npm/
 
 # OS and Scratch files
 .DS_Store
 Thumbs.db
+*.swp
+*~

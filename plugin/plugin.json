@@ -1,0 +1,9 @@
+{
+  "name": "personal-development-harness",
+  "description": "Autonomous Development Harness (PDH v2.0) with Player-Coach Lead Orchestrator (@lead), Blackboard DAG task contracts, multi-archetype specs (PRD/RFC/RCA/Brief), and universal multi-profile verification gates.",
+  "suggestedPrompts": [
+    "Triage this task with PDH v2.0 and design an execution plan",
+    "Run harness status and verify all active project gates",
+    "Create a technical RFC spec and decompose it into blackboard DAG tasks"
+  ]
+}

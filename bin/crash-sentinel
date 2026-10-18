@@ -1,30 +1,79 @@
 #!/usr/bin/env python3
 """
 Personal Development Harness (PDH) - Active Crash Sentinel
-Monitors Android logcat for unhandled exceptions/ANRs and logs DEFECT_REPORTED to blackboard.db.
+Monitors Android logcat for unhandled exceptions/ANRs and logs CRASH_ALERT to the active project's blackboard.db.
+Supports both non-blocking one-shot '--check' for post-deploy verification and continuous watch mode.
 """
 
 import argparse
 import subprocess
 import sys
-import time
 from pathlib import Path
 
-HARNESS_DIR = Path(__file__).resolve().parent.parent / ".harness"
-sys.path.insert(0, str(HARNESS_DIR))
+ROOT_HARNESS_DIR = Path(__file__).resolve().parent.parent / ".harness"
+sys.path.insert(0, str(ROOT_HARNESS_DIR))
 
 from blackboard import Blackboard
 
 
+def detect_default_package() -> str:
+    cwd_name = Path.cwd().name.lower()
+    if "fluffi" in cwd_name:
+        return "com.fluffi"
+    if "gainsmith" in cwd_name:
+        return "com.gainsmith"
+    return ""
+
+
+def check_logcat_once(package_filter: str = "") -> int:
+    bb = Blackboard()
+    state_res = subprocess.run(["adb", "get-state"], capture_output=True, text=True, timeout=2)
+    if state_res.returncode != 0 or "device" not in (state_res.stdout or ""):
+        print("Warning: No active ADB device connected. Skipping live crash logcat check.")
+        return 0
+    cmd = ["adb", "logcat", "-d", "-b", "crash", "-v", "time"]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        raw = res.stdout or ""
+    except Exception as e:
+        print(f"Warning: Could not query adb logcat ({e}). Device might not be connected.")
+        return 0
+
+    lines = raw.splitlines()
+    matching_crashes = []
+    for i, line in enumerate(lines):
+        if "FATAL EXCEPTION" in line or "ANR in" in line:
+            snippet = "\n".join(lines[max(0, i - 2): min(len(lines), i + 25)])
+            if not package_filter or package_filter in snippet:
+                matching_crashes.append(snippet)
+
+    if matching_crashes:
+        latest = matching_crashes[-1]
+        bb.publish_event(
+            trace_id="runtime_crash",
+            sender="crash_sentinel",
+            recipient="dev_mobile",
+            event_type="CRASH_ALERT",
+            severity="CRITICAL",
+            payload={"log_snippet": latest, "package": package_filter},
+        )
+        print(f"✗ CRASH DETECTED ({len(matching_crashes)} crash event(s) for '{package_filter or 'all'}'). Logged to {bb.db_path}:\n")
+        print(latest)
+        return 1
+
+    print(f"✓ Crash Sentinel check passed: 0 crashes in logcat buffer (filter: '{package_filter or 'all'}').")
+    return 0
+
+
 def watch_logcat(package_filter: str = ""):
     bb = Blackboard()
-    print(f"Crash Sentinel active. Monitoring logcat for crashes (filter: '{package_filter}')...")
+    print(f"Crash Sentinel active on {bb.db_path}. Monitoring logcat for crashes (filter: '{package_filter}')...")
 
     cmd = ["adb", "logcat", "-b", "crash", "-v", "time"]
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     except Exception as e:
-        print(f"Warning: Could not launch adb logcat ({e}). Emulator might not be running.")
+        print(f"Warning: Could not launch adb logcat ({e}).")
         sys.exit(0)
 
     crash_buffer = []
@@ -34,26 +83,32 @@ def watch_logcat(package_filter: str = ""):
             crash_buffer.append(line)
             if "FATAL EXCEPTION" in line or "ANR in" in line:
                 trace = "".join(crash_buffer[-20:])
-                bb.publish_event(
-                    trace_id="runtime_crash",
-                    sender="crash_sentinel",
-                    recipient="dev_mobile",
-                    event_type="CRASH_ALERT",
-                    severity="CRITICAL",
-                    payload={"log_snippet": trace, "package": package_filter},
-                )
-                print("\n[!] CRASH DETECTED: Logged CRASH_ALERT to blackboard.db\n")
+                if not package_filter or package_filter in trace:
+                    bb.publish_event(
+                        trace_id="runtime_crash",
+                        sender="crash_sentinel",
+                        recipient="dev_mobile",
+                        event_type="CRASH_ALERT",
+                        severity="CRITICAL",
+                        payload={"log_snippet": trace, "package": package_filter},
+                    )
+                    print(f"\n[!] CRASH DETECTED: Logged CRASH_ALERT to {bb.db_path}\n")
     except KeyboardInterrupt:
         proc.terminate()
         print("Crash Sentinel stopped.")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Active Android Crash Sentinel Daemon")
-    parser.add_argument("--package", default="", help="Optional package name filter")
+    parser = argparse.ArgumentParser(description="Active Android Crash Sentinel")
+    parser.add_argument("--package", default=detect_default_package(), help="Optional package name filter")
+    parser.add_argument("--check", action="store_true", help="Run a non-blocking one-shot check of the crash logcat buffer")
+    parser.add_argument("--clear", action="store_true", help="Clear adb crash buffer before running")
     parser.add_argument("--simulate", action="store_true", help="Simulate a crash event for testing")
 
     args = parser.parse_args()
+
+    if args.clear:
+        subprocess.run(["adb", "logcat", "-b", "crash", "-c"], capture_output=True)
 
     if args.simulate:
         bb = Blackboard()
@@ -63,10 +118,13 @@ def main():
             recipient="dev_mobile",
             event_type="CRASH_ALERT",
             severity="CRITICAL",
-            payload={"error": "java.lang.NullPointerException: Simulated test crash", "package": "com.pdh.mobile"},
+            payload={"error": "java.lang.NullPointerException: Simulated test crash", "package": args.package or "com.pdh.mobile"},
         )
-        print("Simulated CRASH_ALERT successfully logged to blackboard.db.")
+        print(f"Simulated CRASH_ALERT successfully logged to {bb.db_path}.")
         sys.exit(0)
+
+    if args.check:
+        sys.exit(check_logcat_once(args.package))
 
     watch_logcat(args.package)
 

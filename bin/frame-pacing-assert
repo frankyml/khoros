@@ -7,7 +7,16 @@ Parses Android 'dumpsys gfxinfo framestats' and enforces strict jank bounds (<1.
 import argparse
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict
+
+
+def detect_default_package() -> str:
+    cwd_name = Path.cwd().name.lower()
+    if "fluffi" in cwd_name:
+        return "com.fluffi.beta"
+    if "gainsmith" in cwd_name:
+        return "com.gainsmith.beta"
+    return "com.example.app"
 
 
 def parse_framestats(raw_output: str) -> Dict[str, float]:
@@ -23,23 +32,25 @@ def parse_framestats(raw_output: str) -> Dict[str, float]:
             if not line or line.startswith("---") or line.startswith("View hierarchy"):
                 break
             parts = line.split(",")
-            if len(parts) >= 13:
+            if len(parts) >= 14:
                 try:
+                    flags = int(parts[0])
+                    # Skip first-draw / warm-up exempted frames (flag bit 1)
+                    if flags & 1:
+                        continue
                     intended_vsync = int(parts[1])
                     frame_completed = int(parts[13])
-                    # Total duration in milliseconds (timestamps are in nanoseconds)
                     duration_ms = (frame_completed - intended_vsync) / 1_000_000.0
-                    if duration_ms > 0:
+                    if 0 < duration_ms < 5000:
                         frame_durations_ms.append(duration_ms)
                 except (ValueError, IndexError):
                     continue
 
     if not frame_durations_ms:
-        return {"total_frames": 0, "jank_percentage": 0.0, "p95_ms": 0.0}
+        return {"total_frames": 0, "jank_frames": 0, "jank_percentage": 0.0, "p95_ms": 0.0}
 
     frame_durations_ms.sort()
     total_frames = len(frame_durations_ms)
-    # Threshold: 16.66ms for 60Hz target
     jank_frames = sum(1 for d in frame_durations_ms if d > 16.66)
     jank_pct = (jank_frames / total_frames) * 100.0
     p95_idx = int(0.95 * total_frames)
@@ -55,7 +66,7 @@ def parse_framestats(raw_output: str) -> Dict[str, float]:
 
 def main():
     parser = argparse.ArgumentParser(description="Assert 60/120 Hz Frame Pacing on Android")
-    parser.add_argument("package", nargs="?", default="com.example.app", help="Android package name")
+    parser.add_argument("package", nargs="?", default=detect_default_package(), help="Android package name")
     parser.add_argument("--mock-file", help="Path to simulated dumpsys gfxinfo output file for CI testing")
     parser.add_argument("--max-jank-pct", type=float, default=1.0, help="Maximum allowable jank percentage")
     parser.add_argument("--max-p95-ms", type=float, default=16.66, help="Maximum allowable 95th percentile frame time")
@@ -67,12 +78,16 @@ def main():
             raw_output = f.read()
     else:
         import subprocess
+        state_res = subprocess.run(["adb", "get-state"], capture_output=True, text=True, timeout=2)
+        if state_res.returncode != 0 or "device" not in (state_res.stdout or ""):
+            print("Warning: No active ADB device connected. Skipping live dumpsys frame pacing check.")
+            sys.exit(0)
         try:
             res = subprocess.run(
                 ["adb", "shell", "dumpsys", "gfxinfo", args.package, "framestats"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=5,
             )
             raw_output = res.stdout
         except Exception as e:
@@ -80,7 +95,7 @@ def main():
             sys.exit(0)
 
     stats = parse_framestats(raw_output)
-    print("\n=== Android Frame Pacing & VSYNC Report ===")
+    print(f"\n=== Android Frame Pacing & VSYNC Report ({args.package}) ===")
     print(f"Total Frames Analyzed : {stats['total_frames']}")
     print(f"Janky Frames (>16.6ms): {stats.get('jank_frames', 0)}")
     print(f"Jank Percentage       : {stats['jank_percentage']}% (Threshold: <= {args.max_jank_pct}%)")

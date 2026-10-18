@@ -1,5 +1,6 @@
-# Personal Development Harness (PDH) Configuration
-version: "1.0"
+# Personal Development Harness (PDH) v2.0 Configuration
+version: "2.0"
+profile: "python"
 
 host:
   platform: "cachyos-linux"
@@ -8,14 +9,20 @@ host:
   btrfs_cow_disabled: true
   bwrap_sandbox: true
 
+orchestrator:
+  lead_persona: "@lead"
+  topology: "player-coach"  # T0/T1 direct execution; T2/T3 Blackboard DAG + subagent fan-out
+  verify_before_submit: true
+  adversarial_critic: true
+
 models:
   reasoning:
     id: "gemini-pro"
-    description: "Gemini Pro for architecture, STRIDE security, PRD synthesis, and complex debug"
+    description: "Gemini Pro for @lead triage, @architect RFC/PRD synthesis, STRIDE security, and @critic verification"
     temperature: 0.2
   fast:
     id: "gemini-flash"
-    description: "Gemini Flash for rapid AST linting, persona driving, diff checking, and commits"
+    description: "Gemini Flash for @explorer context harvesting, AST linting, persona evaluation, and fast checks"
     temperature: 0.1
 
 governor:
@@ -25,10 +32,10 @@ governor:
   token_budget:
     rpm_limit: 60
     tpm_limit: 1000000
-    reserved_headroom_ratio: 0.25  # 25% exclusive reserve for Q0 (Security) and Q1 (Architect)
+    reserved_headroom_ratio: 0.25  # 25% exclusive reserve for Q0 (Critical/Critic) and Q1 (Lead/Architect)
     cache_prefix_min_tokens: 32768
   leases:
-    lease_ttl_seconds: 300
+    lease_ttl_seconds: 1800
     heartbeat_interval_seconds: 60
 
 mobile:
