@@ -1,0 +1,53 @@
+{
+  "title": "feat: explode(map) (#8235)",
+  "tier": "T2",
+  "type": "feature",
+  "suite": "repo-features",
+  "kind": "repo",
+  "repo": "sqlglot",
+  "base": "99947fbcc5fa34f4db6354c97f6cef79c105d41b",
+  "commit": "45158c35c7d4ed3aea55564c2bfca352e2075e13",
+  "f2p": [
+    "tests.dialects.test_spark.TestSpark.test_explode_map"
+  ],
+  "p2p": [
+    "tests.dialects.test_spark.TestSpark.test_analyze",
+    "tests.dialects.test_spark.TestSpark.test_approx_percentile",
+    "tests.dialects.test_spark.TestSpark.test_array_insert",
+    "tests.dialects.test_spark.TestSpark.test_binary_string",
+    "tests.dialects.test_spark.TestSpark.test_bool_or",
+    "tests.dialects.test_spark.TestSpark.test_current_user",
+    "tests.dialects.test_spark.TestSpark.test_ddl",
+    "tests.dialects.test_spark.TestSpark.test_declare",
+    "tests.dialects.test_spark.TestSpark.test_explode_projection_to_unnest",
+    "tests.dialects.test_spark.TestSpark.test_hint",
+    "tests.dialects.test_spark.TestSpark.test_insert_cte",
+    "tests.dialects.test_spark.TestSpark.test_minus",
+    "tests.dialects.test_spark.TestSpark.test_named_struct",
+    "tests.dialects.test_spark.TestSpark.test_schema_binding_options",
+    "tests.dialects.test_spark.TestSpark.test_set_variable",
+    "tests.dialects.test_spark.TestSpark.test_spark",
+    "tests.dialects.test_spark.TestSpark.test_string",
+    "tests.dialects.test_spark.TestSpark.test_strip_modifiers",
+    "tests.dialects.test_spark.TestSpark.test_to_date",
+    "tests.dialects.test_spark.TestSpark.test_transform_query",
+    "tests.dialects.test_spark.TestSpark.test_transpile_annotated_exploded_column",
+    "tests.dialects.test_spark.TestSpark.test_try_divide"
+  ],
+  "files_changed": [
+    "sqlglot/generators/presto.py",
+    "sqlglot/generators/trino.py",
+    "sqlglot/transforms.py",
+    "tests/dialects/test_spark.py"
+  ],
+  "added_lines": 43,
+  "prompt_variant": "terse",
+  "khoros_tier_with_files": "T2_ORCHESTRATED",
+  "khoros_tier_prompt_only": "T0_MICRO",
+  "f2p_assertions": {
+    "tests.dialects.test_spark.TestSpark.test_explode_map": 3
+  },
+  "f2p_assertions_passing_before": {
+    "tests.dialects.test_spark.TestSpark.test_explode_map": 0
+  }
+}

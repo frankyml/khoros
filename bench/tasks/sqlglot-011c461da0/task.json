@@ -1,0 +1,42 @@
+{
+  "title": "feat(trino): parse CASE routine statements [CLAUDE] (#8068)",
+  "tier": "T2",
+  "type": "feature",
+  "suite": "repo-features",
+  "kind": "repo",
+  "repo": "sqlglot",
+  "base": "13e6c07984e3ba8c34021ae72366a014a8f54a4e",
+  "commit": "011c461da0d432c23c84f4fbb1159ff4992ad0a1",
+  "f2p": [
+    "tests.dialects.test_trino.TestTrino.test_inline_udf_case"
+  ],
+  "p2p": [
+    "tests.dialects.test_trino.TestTrino.test_analyze",
+    "tests.dialects.test_trino.TestTrino.test_array_first",
+    "tests.dialects.test_trino.TestTrino.test_ddl",
+    "tests.dialects.test_trino.TestTrino.test_inline_udf",
+    "tests.dialects.test_trino.TestTrino.test_inline_udf_begin_end",
+    "tests.dialects.test_trino.TestTrino.test_inline_udf_if",
+    "tests.dialects.test_trino.TestTrino.test_json_value",
+    "tests.dialects.test_trino.TestTrino.test_listagg",
+    "tests.dialects.test_trino.TestTrino.test_trim",
+    "tests.dialects.test_trino.TestTrino.test_trino"
+  ],
+  "files_changed": [
+    "sqlglot/expressions/query.py",
+    "sqlglot/generator.py",
+    "sqlglot/generators/trino.py",
+    "sqlglot/parsers/trino.py",
+    "tests/dialects/test_trino.py"
+  ],
+  "added_lines": 51,
+  "prompt_variant": "full",
+  "khoros_tier_with_files": "T2_ORCHESTRATED",
+  "khoros_tier_prompt_only": "T2_ORCHESTRATED",
+  "f2p_assertions": {
+    "tests.dialects.test_trino.TestTrino.test_inline_udf_case": 7
+  },
+  "f2p_assertions_passing_before": {
+    "tests.dialects.test_trino.TestTrino.test_inline_udf_case": 0
+  }
+}

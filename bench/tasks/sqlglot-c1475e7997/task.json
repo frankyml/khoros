@@ -1,0 +1,42 @@
+{
+  "title": "feat(trino): parse WITH FUNCTION ... RETURNS ... RETURN inline UDFs [CLAUDE] (#7934)",
+  "tier": "T3",
+  "type": "feature",
+  "suite": "repo-features",
+  "kind": "repo",
+  "repo": "sqlglot",
+  "base": "8ef659e414117628f59cb7cd4948a4d6ab7767df",
+  "commit": "c1475e7997ac1561d073cf5816e39b61eada70bc",
+  "f2p": [
+    "tests.dialects.test_trino.TestTrino.test_inline_udf"
+  ],
+  "p2p": [
+    "tests.dialects.test_trino.TestTrino.test_analyze",
+    "tests.dialects.test_trino.TestTrino.test_array_first",
+    "tests.dialects.test_trino.TestTrino.test_ddl",
+    "tests.dialects.test_trino.TestTrino.test_json_value",
+    "tests.dialects.test_trino.TestTrino.test_listagg",
+    "tests.dialects.test_trino.TestTrino.test_trim",
+    "tests.dialects.test_trino.TestTrino.test_trino"
+  ],
+  "files_changed": [
+    "sqlglot/expressions/query.py",
+    "sqlglot/generator.py",
+    "sqlglot/generators/trino.py",
+    "sqlglot/parser.py",
+    "sqlglot/parsers/clickhouse.py",
+    "sqlglot/parsers/trino.py",
+    "sqlglot/transforms.py",
+    "tests/dialects/test_trino.py"
+  ],
+  "added_lines": 82,
+  "prompt_variant": "terse",
+  "khoros_tier_with_files": "T3_PARALLEL_DAG",
+  "khoros_tier_prompt_only": "T0_MICRO",
+  "f2p_assertions": {
+    "tests.dialects.test_trino.TestTrino.test_inline_udf": 7
+  },
+  "f2p_assertions_passing_before": {
+    "tests.dialects.test_trino.TestTrino.test_inline_udf": 2
+  }
+}

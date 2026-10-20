@@ -1,0 +1,65 @@
+{
+  "title": "feat(clickhouse): support refreshable materialized views [CODEX] (#7990)",
+  "tier": "T2",
+  "type": "feature",
+  "suite": "repo-features",
+  "kind": "repo",
+  "repo": "sqlglot",
+  "base": "9815ccb32f1e5d17c31f4a1bdd868508b39f63dc",
+  "commit": "d10d7eef5ef3c7723c36502aa4498720156d63ae",
+  "f2p": [
+    "tests.dialects.test_clickhouse.TestClickhouse.test_refreshable_materialized_view"
+  ],
+  "p2p": [
+    "tests.dialects.test_clickhouse.TestClickhouse.test_agg_functions",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_agg_functions_multiple_suffixes",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_aggregate_function_column_with_any_keyword",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_array_join",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_array_offset",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_clickhouse",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_clickhouse_values",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_convert",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_create_table_as_alias",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_cte",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_datetime_funcs",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_ddl",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_detach",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_drop_on_cluster",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_functions",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_geom_types",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_grant",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_groupconcat",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_json_type",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_nothing_type",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_parameterization",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_revoke",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_safe_div",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_signed_and_unsigned_types",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_sql_security",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_string_split",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_table_functions",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_ternary",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_timestr_to_time",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_to_start_of",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_traverse_scope",
+    "tests.dialects.test_clickhouse.TestClickhouse.test_window_functions"
+  ],
+  "files_changed": [
+    "sqlglot/expressions/properties.py",
+    "sqlglot/generator.py",
+    "sqlglot/generators/clickhouse.py",
+    "sqlglot/parser.py",
+    "sqlglot/parsers/clickhouse.py",
+    "tests/dialects/test_clickhouse.py"
+  ],
+  "added_lines": 122,
+  "prompt_variant": "terse",
+  "khoros_tier_with_files": "T2_ORCHESTRATED",
+  "khoros_tier_prompt_only": "T0_MICRO",
+  "f2p_assertions": {
+    "tests.dialects.test_clickhouse.TestClickhouse.test_refreshable_materialized_view": 8
+  },
+  "f2p_assertions_passing_before": {
+    "tests.dialects.test_clickhouse.TestClickhouse.test_refreshable_materialized_view": 8
+  }
+}

@@ -50,3 +50,10 @@ node_modules/
 Thumbs.db
 *.swp
 *~
+
+# Benchmark results (bench/run_ab.py)
+bench/results/
+bench/harbor/certs/
+bench/harbor/jobs/
+bench/harbor/datasets/
+bench/scenarios/cache/

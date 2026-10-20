@@ -1,0 +1,17 @@
+# Docker Compose overlay for networks with TLS inspection (a corporate proxy re-signing HTTPS).
+# Mounts a CA bundle (public roots + the proxy's root CA) read-only into every task container and points the
+# standard trust variables at it, so the agent install, the agent and the task's own tests can all download.
+# The container's system trust store is left untouched (apt may regenerate it).
+# {CERTS_DIR} is filled in by run_harbor.py.
+services:
+  main:
+    volumes:
+      - {CERTS_DIR}/ca-bundle.pem:/opt/bench-certs/ca-bundle.pem:ro
+      - {CERTS_DIR}/corporate-ca.pem:/opt/bench-certs/corporate-ca.pem:ro
+    environment:
+      SSL_CERT_FILE: /opt/bench-certs/ca-bundle.pem
+      CURL_CA_BUNDLE: /opt/bench-certs/ca-bundle.pem
+      REQUESTS_CA_BUNDLE: /opt/bench-certs/ca-bundle.pem
+      PIP_CERT: /opt/bench-certs/ca-bundle.pem
+      GIT_SSL_CAINFO: /opt/bench-certs/ca-bundle.pem
+      NODE_EXTRA_CA_CERTS: /opt/bench-certs/corporate-ca.pem

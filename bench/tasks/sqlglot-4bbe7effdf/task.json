@@ -1,0 +1,42 @@
+{
+  "title": "feat(trino): parse BEGIN...END routine bodies with DECLARE/SET [CLAUDE] (#8004)",
+  "tier": "T3",
+  "type": "feature",
+  "suite": "repo-features",
+  "kind": "repo",
+  "repo": "sqlglot",
+  "base": "f89e47139368513ef23befbdc846cc94b0bab9cb",
+  "commit": "4bbe7effdf2ee640127672601d8cfe9e583c0911",
+  "f2p": [
+    "tests.dialects.test_trino.TestTrino.test_inline_udf_begin_end"
+  ],
+  "p2p": [
+    "tests.dialects.test_trino.TestTrino.test_analyze",
+    "tests.dialects.test_trino.TestTrino.test_array_first",
+    "tests.dialects.test_trino.TestTrino.test_ddl",
+    "tests.dialects.test_trino.TestTrino.test_inline_udf",
+    "tests.dialects.test_trino.TestTrino.test_json_value",
+    "tests.dialects.test_trino.TestTrino.test_listagg",
+    "tests.dialects.test_trino.TestTrino.test_trim",
+    "tests.dialects.test_trino.TestTrino.test_trino"
+  ],
+  "files_changed": [
+    "sqlglot/dialects/trino.py",
+    "sqlglot/expressions/query.py",
+    "sqlglot/generator.py",
+    "sqlglot/generators/trino.py",
+    "sqlglot/parser.py",
+    "sqlglot/parsers/trino.py",
+    "tests/dialects/test_trino.py"
+  ],
+  "added_lines": 41,
+  "prompt_variant": "terse",
+  "khoros_tier_with_files": "T3_PARALLEL_DAG",
+  "khoros_tier_prompt_only": "T0_MICRO",
+  "f2p_assertions": {
+    "tests.dialects.test_trino.TestTrino.test_inline_udf_begin_end": 8
+  },
+  "f2p_assertions_passing_before": {
+    "tests.dialects.test_trino.TestTrino.test_inline_udf_begin_end": 2
+  }
+}
