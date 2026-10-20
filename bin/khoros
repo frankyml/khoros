@@ -615,7 +615,9 @@ def bootstrap_workspace_harness(target_dir: Path = None, explicit_profile: str =
     target_harness = target_dir / ".harness"
     target_harness.mkdir(parents=True, exist_ok=True)
 
-    subprocess.run(["chattr", "+C", str(target_harness)], capture_output=True)
+    # Btrfs no-CoW attribute; chattr only exists on Linux
+    if shutil.which("chattr"):
+        subprocess.run(["chattr", "+C", str(target_harness)], capture_output=True)
 
     # Copy project-specific config & token files if not already present
     detected_prof = explicit_profile or detect_project_profile(target_dir)

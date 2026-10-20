@@ -189,10 +189,14 @@ class VerificationPipeline:
             violations.extend(self.verify_mermaid_docs())
 
         # 5. Optional Automated Unit Test Gate
-        if run_tests and (self.workspace_dir / "tests" / "unit").exists():
+        test_dir = next((d for d in ("tests/unit", "tests", "test") if (self.workspace_dir / d).is_dir()), None)
+        if run_tests and test_dir is None:
+            # Say so instead of passing silently: a gate that ran no tests proves nothing
+            checks_run.append("unit-tests (skipped: no tests/ directory)")
+        elif run_tests:
             checks_run.append("unit-tests")
             proc = subprocess.run(
-                [sys.executable, "-m", "unittest", "discover", "-s", "tests/unit"],
+                [sys.executable, "-m", "unittest", "discover", "-s", test_dir],
                 cwd=str(self.workspace_dir),
                 capture_output=True,
                 text=True,
@@ -200,7 +204,7 @@ class VerificationPipeline:
             if proc.returncode != 0:
                 violations.append(
                     {
-                        "file": "tests/unit",
+                        "file": test_dir,
                         "line": 0,
                         "rule": "UNIT_TEST_FAILURE",
                         "message": (proc.stderr or proc.stdout).strip()[-400:],
