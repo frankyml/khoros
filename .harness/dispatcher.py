@@ -195,7 +195,6 @@ class TaskDispatcher:
         success, token = self.bb.claim_task(task["id"], assigned_worker)
         if success:
             tier = self._map_priority_tier(task)
-            self.gov.record_usage(tier, input_tokens=36000, cached_tokens=32768, output_tokens=2048)
             self.bb.publish_event(
                 trace_id=task["id"],
                 sender="dispatcher",

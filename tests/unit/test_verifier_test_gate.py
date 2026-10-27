@@ -6,10 +6,12 @@ Unit tests for the verification gate's test discovery (`khoros verify --with-tes
 - reports, instead of silently passing, when no test directory exists
 """
 
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / ".harness"))
 
@@ -21,6 +23,11 @@ FAILING = "import unittest\n\nclass T(unittest.TestCase):\n    def test_bad(self
 
 class TestVerifierTestGate(unittest.TestCase):
     def setUp(self):
+        # inner verify runs must execute their temp project's tests even when this suite runs under `khoros verify`
+        patcher = mock.patch.dict("os.environ")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop("KHOROS_VERIFY_DEPTH", None)
         self.tmp = tempfile.TemporaryDirectory()
         self.ws = Path(self.tmp.name)
 
@@ -50,7 +57,7 @@ class TestVerifierTestGate(unittest.TestCase):
     def test_no_tests_is_reported(self):
         ok, report = self.run_gate()
         self.assertTrue(ok)
-        self.assertTrue(any("skipped" in c for c in report["checks_run"]))
+        self.assertTrue(any(c.startswith("unit-tests (skipped") for c in report["skipped"]))
 
 
 if __name__ == "__main__":
