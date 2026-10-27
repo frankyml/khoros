@@ -10,7 +10,6 @@ Checks: secrets, python syntax, JS syntax (node --check), JSON/YAML/TOML parse, 
 design tokens (only with .harness/design-tokens.json and UI files in scope), lint commands, tests.
 """
 
-import importlib.util
 import json
 import os
 import re
@@ -18,6 +17,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -40,6 +40,7 @@ DEFAULT_VERIFY_CONFIG: Dict[str, Any] = {
     "test_timeout": 240,
     "max_stop_blocks": 3,
     "loop_edit_threshold": 8,
+    "gate_budget": 270,  # seconds for the whole Stop gate (lint + tests + baseline); hook timeout is 300
 }
 
 FIX_HINTS = {
@@ -187,69 +188,190 @@ def expand_files(targets: List[Path]) -> List[Path]:
             continue
         candidates = [target] if target.is_file() else sorted(target.rglob("*"))
         for f in candidates:
-            if f.is_file() and not any(p in SKIP_DIRS for p in f.parts) and f.suffix.lower() not in BINARY_SUFFIXES:
+            # skip-dirs apply below a directory target only: a checkout living under `.worktrees/` or `build/`
+            # must not have all its files skipped because of where it sits
+            below = f.relative_to(target).parts if target.is_dir() else ()
+            if f.is_file() and not any(p in SKIP_DIRS for p in below) and f.suffix.lower() not in BINARY_SUFFIXES:
                 files.append(f)
     return files
 
 
 def _tail(text: str, lines: int = TAIL_LINES) -> str:
-    return "\n".join(text.strip().splitlines()[-lines:])
+    # a minified bundle can put megabytes on one line: cap line length as well as line count
+    return "\n".join(l[:400] for l in text.strip().splitlines()[-lines:])
+
+
+MAX_OUTPUT_BYTES = 4_000_000
+_ACTIVE_GROUPS: set = set()
+
+
+_LAUNCH = {"busy": False, "pending": False}
+
+
+def kill_active_children() -> None:
+    """SIGKILL every command process group still running."""
+    for pid in list(_ACTIVE_GROUPS):
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+
+
+def terminate_requested() -> None:
+    """The gate's SIGTERM handler: take every running command down and exit. A signal that lands while a command
+    is being spawned (started but not yet registered) is deferred until it is registered, so it is not missed."""
+    if _LAUNCH["busy"]:
+        _LAUNCH["pending"] = True
+        return
+    kill_active_children()
+    raise SystemExit(0)
 
 
 def _run_command(cmd: Any, cwd: Path, timeout: float, shell: bool = False) -> Tuple[int, str, bool]:
-    """Run a command in its own process group; kill the whole group on timeout. -> (rc, output, timed_out)."""
+    """Run a command in its own process group; kill the whole group on timeout. -> (rc, output, timed_out).
+
+    Output goes to a temp file, not a pipe: a daemonized grandchild that inherits the descriptor
+    cannot keep us waiting after the timeout.
+    """
     env = dict(os.environ)
     env["KHOROS_VERIFY_DEPTH"] = str(int(env.get("KHOROS_VERIFY_DEPTH", "0") or 0) + 1)
-    try:
-        proc = subprocess.Popen(
-            cmd, cwd=str(cwd), shell=shell, env=env, text=True, errors="replace",
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
-        )
-    except OSError as e:
-        return 127, f"could not start command: {e}", False
-    try:
-        out, _ = proc.communicate(timeout=timeout)
-        return proc.returncode, out or "", False
-    except subprocess.TimeoutExpired:
+    with tempfile.TemporaryFile() as sink:
+        _LAUNCH["busy"] = True
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except (OSError, ProcessLookupError):
-            proc.kill()
-        out, _ = proc.communicate()
-        return 124, out or "", True
+            try:
+                proc = subprocess.Popen(
+                    cmd, cwd=str(cwd), shell=shell, env=env, stdin=subprocess.DEVNULL,
+                    stdout=sink, stderr=subprocess.STDOUT, start_new_session=True,
+                )
+            except OSError as e:
+                return 127, f"could not start command: {e}", False
+            _ACTIVE_GROUPS.add(proc.pid)
+        finally:
+            _LAUNCH["busy"] = False
+        if _LAUNCH["pending"]:
+            terminate_requested()
+        timed_out = False
+        try:
+            proc.wait(timeout=max(timeout, 0))
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError):
+                proc.kill()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+        finally:
+            _ACTIVE_GROUPS.discard(proc.pid)
+        size = sink.seek(0, os.SEEK_END)
+        sink.seek(max(0, size - MAX_OUTPUT_BYTES))
+        out = sink.read().decode("utf-8", errors="replace")
+    return (124 if timed_out or proc.returncode is None else proc.returncode), out, timed_out
 
 
 # --------------------------------------------------------------------------- test detection
 
-def _has_python_tests(ws: Path) -> Optional[Path]:
-    """Return the preferred python test directory, or None."""
-    for d in ("tests/unit", "tests", "test"):
-        base = ws / d
-        if base.is_dir() and (any(base.rglob("test_*.py")) or any(base.rglob("*_test.py"))):
-            return base
-    return None
+def find_project_python(ws: Path) -> Tuple[str, str]:
+    """The interpreter the project's tests should run with -> (executable, display name).
+
+    The project's own venv wins; otherwise `python3` on PATH. Never the interpreter running the hook.
+    """
+    for rel in (".venv/bin/python", "venv/bin/python", ".venv/Scripts/python.exe", "venv/Scripts/python.exe"):
+        candidate = ws / rel
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate), rel
+    found = shutil.which("python3") or shutil.which("python")
+    return (found, "python3") if found else (sys.executable, "python3")
 
 
-def detect_test_command(ws: Path, cfg: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Any], str, bool, List[str]]:
-    """-> (command, label, use_shell, skip_reasons). command is None when nothing can run."""
+def _python_has_pytest(py: str, ws: Path) -> bool:
+    try:
+        return subprocess.run([py, "-c", "import pytest"], cwd=str(ws), capture_output=True, timeout=30).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _has_pytest_config(ws: Path) -> bool:
+    if (ws / "pytest.ini").exists():
+        return True
+    for name, marker in (("pyproject.toml", "[tool.pytest"), ("setup.cfg", "[tool:pytest]"), ("tox.ini", "[pytest]")):
+        try:
+            if marker in (ws / name).read_text(encoding="utf-8", errors="ignore"):
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def _python_test_dirs(ws: Path) -> Dict[Path, List[str]]:
+    """Directories under tests/ or test/ that directly hold test files -> unittest patterns they need."""
+    found: Dict[Path, List[str]] = {}
+    for top in ("tests", "test"):
+        base = ws / top
+        if not base.is_dir():
+            continue
+        for d in [base, *sorted(p for p in base.rglob("*") if p.is_dir())]:
+            if any(part in SKIP_DIRS for part in d.relative_to(ws).parts):
+                continue
+            patterns = [pat for pat in ("test*.py", "*_test.py") if any(d.glob(pat))]
+            if patterns:
+                found[d] = patterns
+    return found
+
+
+def _unittest_commands(py: str, label_py: str, ws: Path, dirs: Dict[Path, List[str]]) -> List[Dict[str, Any]]:
+    """One `unittest discover` per test location: discovery only recurses through packages."""
+    def rel(p: Path) -> str:
+        return p.relative_to(ws).as_posix() or "."
+
+    seen = set()
+    runs = []
+    for d, patterns in dirs.items():
+        top = d
+        if (d / "__init__.py").exists():
+            while top.parent != ws and (top.parent / "__init__.py").exists():
+                top = top.parent
+        for pat in patterns:
+            key = (top, pat)
+            if key in seen:
+                continue
+            seen.add(key)
+            args = ["-m", "unittest", "discover", "-s", rel(top)]
+            if (top / "__init__.py").exists():
+                args += ["-t", rel(top.parent)]
+            if pat != "test*.py":
+                args += ["-p", pat]
+            runs.append({"cmd": [py, *args], "label": " ".join([label_py, *args]), "shell": False})
+    return runs
+
+
+def detect_test_commands(
+    ws: Path, cfg: Optional[Dict[str, Any]] = None, python_root: Optional[Path] = None
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """-> (runs, skip_reasons). Every detected ecosystem contributes its test command(s).
+
+    Each run is {cmd, label, shell}. `python_root` is where the project interpreter is looked up
+    (defaults to `ws`; the baseline worktree passes the real checkout, which owns the venv).
+    """
     cfg = cfg or load_verify_config(ws)
     configured = str(cfg.get("test_command") or "").strip()
     if configured:
-        return configured, configured, True, []
+        return [{"cmd": configured, "label": configured, "shell": True}], []
 
     reasons: List[str] = []
-    py_dir = _has_python_tests(ws)
-    if py_dir is not None:
-        rel = py_dir.relative_to(ws).as_posix()
-        if importlib.util.find_spec("pytest") is not None:
-            cmd = [sys.executable, "-m", "pytest", "-q", "-x"]
-            if rel == "tests/unit":
-                cmd.append(rel)
-            return cmd, " ".join(["python3", *cmd[1:]]), False, reasons
-        cmd = [sys.executable, "-m", "unittest", "discover", "-s", rel]
-        if (py_dir / "__init__.py").exists():
-            cmd += ["-t", "."]
-        return cmd, " ".join(["python3", *cmd[1:]]), False, reasons
+    runs: List[Dict[str, Any]] = []
+    py_dirs = _python_test_dirs(ws)
+    if py_dirs:
+        py, label_py = find_project_python(python_root or ws)
+        if _python_has_pytest(py, ws):
+            args = ["-m", "pytest", "-q"]  # no -x: the gate compares the full failure set with the baseline
+            if not _has_pytest_config(ws):
+                args.extend(sorted({d.relative_to(ws).parts[0] for d in py_dirs}))
+            runs.append({"cmd": [py, *args], "label": " ".join([label_py, *args]), "shell": False})
+        else:
+            runs.extend(_unittest_commands(py, label_py, ws, py_dirs))
 
     pkg = ws / "package.json"
     if pkg.exists():
@@ -259,34 +381,91 @@ def detect_test_command(ws: Path, cfg: Optional[Dict[str, Any]] = None) -> Tuple
             script = ""
         if script and "no test specified" not in script:
             if shutil.which("npm"):
-                return ["npm", "test"], "npm test", False, reasons
-            reasons.append("npm not installed")
+                runs.append({"cmd": ["npm", "test"], "label": "npm test", "shell": False})
+            else:
+                reasons.append("npm not installed")
         else:
             reasons.append("package.json has no test script")
     if (ws / "go.mod").exists():
         if shutil.which("go"):
-            return ["go", "test", "./..."], "go test ./...", False, reasons
-        reasons.append("go not installed")
+            runs.append({"cmd": ["go", "test", "./..."], "label": "go test ./...", "shell": False})
+        else:
+            reasons.append("go not installed")
     if (ws / "Cargo.toml").exists():
         if shutil.which("cargo"):
-            return ["cargo", "test"], "cargo test", False, reasons
-        reasons.append("cargo not installed")
+            runs.append({"cmd": ["cargo", "test"], "label": "cargo test", "shell": False})
+        else:
+            reasons.append("cargo not installed")
     makefile = next((ws / n for n in ("Makefile", "makefile", "GNUmakefile") if (ws / n).exists()), None)
-    if makefile is not None:
+    if makefile is not None and not runs:  # make is the fallback, not one more runner
         try:
             has_target = re.search(r"^test\s*:", makefile.read_text(encoding="utf-8", errors="ignore"), re.MULTILINE)
         except OSError:
             has_target = None
         if has_target:
             if shutil.which("make"):
-                return ["make", "test"], "make test", False, reasons
-            reasons.append("make not installed")
-    if not reasons:
+                runs.append({"cmd": ["make", "test"], "label": "make test", "shell": False})
+            else:
+                reasons.append("make not installed")
+    if not runs and not reasons:
         reasons.append("no test command detected (set verify.test_command in .harness/config.yaml)")
-    return None, "", False, reasons
+    return runs, reasons
+
+
+_UNITTEST_FAILED = re.compile(r"^(?:FAIL|ERROR): (.+?)\s*$", re.MULTILINE)
+_PYTEST_FAILED = re.compile(r"^(?:FAILED|ERROR) (\S+\.py(?:::\S+)?)(?: - .*)?$", re.MULTILINE)
+
+
+def parse_failing_ids(output: str) -> Optional[List[str]]:
+    """Failing test ids from unittest (`FAIL: test_x (mod.Class)`) or pytest (`FAILED path::name`) output."""
+    ids = {m.group(1) for m in _UNITTEST_FAILED.finditer(output)} | {m.group(1) for m in _PYTEST_FAILED.finditer(output)}
+    return sorted(ids) or None
 
 
 # --------------------------------------------------------------------------- pipeline
+
+def _is_jsonc(f: Path) -> bool:
+    """JSON files that editors and tools read with comments and trailing commas allowed."""
+    name = f.name.lower()
+    return (
+        name.endswith(".jsonc")
+        or name.startswith(("tsconfig", "jsconfig"))
+        or name == "devcontainer.json"
+        or ".vscode" in f.parts
+        or ".devcontainer" in f.parts
+    )
+
+
+def _strip_jsonc(text: str) -> str:
+    """Drop // and /* */ comments (outside strings) and trailing commas so json.loads can check the rest."""
+    out: List[str] = []
+    i, n, in_str = 0, len(text), False
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            in_str = c != '"'
+        elif c == '"':
+            in_str = True
+            out.append(c)
+        elif text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            out.append(" ")
+            continue
+        else:
+            out.append(c)
+        i += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+
 
 class VerificationPipeline:
     SECRET_PATTERNS = [
@@ -300,10 +479,25 @@ class VerificationPipeline:
         ),
     ]
 
-    def __init__(self, workspace_dir: Optional[Path] = None, profile: Optional[str] = None):
+    def __init__(
+        self,
+        workspace_dir: Optional[Path] = None,
+        profile: Optional[str] = None,
+        deadline: Optional[float] = None,
+        python_root: Optional[Path] = None,
+    ):
+        """`deadline` is an absolute time.monotonic() value shared by every command of this pipeline."""
         self.workspace_dir = Path(workspace_dir) if workspace_dir else Path.cwd()
         self.profile = (profile or detect_project_profile(self.workspace_dir)).lower()
         self.config = load_verify_config(self.workspace_dir)
+        self.deadline = deadline
+        self.python_root = python_root
+
+    def remaining(self, limit: float) -> float:
+        """`limit` clipped to what is left of the shared deadline (never negative)."""
+        if self.deadline is None:
+            return limit
+        return max(0.0, min(limit, self.deadline - time.monotonic()))
 
     # -- individual checks (each takes the concrete files in scope)
 
@@ -356,8 +550,11 @@ class VerificationPipeline:
     def verify_js_syntax(self, files: List[Path], node: str) -> List[Dict[str, Any]]:
         violations = []
         for f in files:
-            rc, out, _ = _run_command([node, "--check", str(f)], self.workspace_dir, 20)
-            if rc == 0:
+            budget = self.remaining(20)
+            if budget <= 0:  # out of time: the rest of the files stay unchecked, not failed
+                break
+            rc, out, timed_out = _run_command([node, "--check", str(f)], self.workspace_dir, budget)
+            if rc == 0 or timed_out:
                 continue
             # .js files using ESM without "type": "module" are valid for the project's bundler
             if "Cannot use import statement" in out or "Unexpected token 'export'" in out:
@@ -388,11 +585,10 @@ class VerificationPipeline:
             suffix = f.suffix.lower()
             if suffix not in (".json", ".yaml", ".yml", ".toml"):
                 continue
-            if f.name.startswith(("tsconfig", "jsconfig")):  # JSON-with-comments
-                continue
             try:
                 if suffix == ".json":
-                    json.loads(f.read_text(encoding="utf-8"))
+                    text = f.read_text(encoding="utf-8-sig")
+                    json.loads(_strip_jsonc(text) if _is_jsonc(f) else text)
                 elif suffix == ".toml":
                     if toml_mod is None:
                         skipped_toml = True
@@ -455,36 +651,69 @@ class VerificationPipeline:
 
     # -- test / lint commands
 
-    def run_tests(self, timeout: Optional[float] = None) -> Dict[str, Any]:
-        """-> {status: passed|failed|timeout|skipped, command, reason, output_tail, duration}"""
-        if int(os.environ.get("KHOROS_VERIFY_DEPTH", "0") or 0) >= 1:
-            return {"status": "skipped", "reason": "nested verify run (avoids recursion)"}
-        cmd, label, shell, reasons = detect_test_command(self.workspace_dir, self.config)
-        if cmd is None:
-            return {"status": "skipped", "reason": "; ".join(reasons)}
-        limit = timeout if timeout is not None else self.config["test_timeout"]
+    def _run_one_test(self, run: Dict[str, Any], limit: float) -> Dict[str, Any]:
+        label = run["label"]
         start = time.time()
-        rc, out, timed_out = _run_command(cmd, self.workspace_dir, limit, shell=shell)
-        result = {
+        if limit <= 0:
+            return {"command": label, "status": "timeout", "reason": "time budget exhausted", "duration": 0.0,
+                    "output_tail": "", "failing_ids": None}
+        rc, out, timed_out = _run_command(run["cmd"], self.workspace_dir, limit, shell=run["shell"])
+        result: Dict[str, Any] = {
             "command": label,
             "duration": round(time.time() - start, 1),
             "output_tail": _tail(out),
+            "failing_ids": None,
         }
         if timed_out:
-            result.update(status="timeout", reason=f"exceeded {limit}s")
-        elif rc == 5 and "pytest" in label:
-            result.update(status="skipped", reason="no tests collected")
+            result.update(status="timeout", reason=f"exceeded {round(limit)}s")
+        elif (rc == 5 and "pytest" in label) or re.search(r"^Ran 0 tests", out, re.MULTILINE):
+            reason = "no tests collected"
+            if "unittest" in label:
+                reason += " (unittest found none; pytest-style tests need pytest installed for this interpreter)"
+            result.update(status="skipped", reason=reason)
         elif rc == 0:
             result["status"] = "passed"
         else:
-            result["status"] = "failed"
+            result.update(status="failed", failing_ids=parse_failing_ids(out))
         return result
+
+    def run_tests(self, timeout: Optional[float] = None) -> Dict[str, Any]:
+        """Run the test command of every detected ecosystem.
+
+        -> {status: passed|failed|timeout|skipped, command, reason, output_tail, duration, runs: [...]}
+        where each run has {command, status, reason, output_tail, duration, failing_ids}.
+        """
+        if int(os.environ.get("KHOROS_VERIFY_DEPTH", "0") or 0) >= 1:
+            return {"status": "skipped", "reason": "nested verify run (avoids recursion)", "runs": []}
+        runs, reasons = detect_test_commands(self.workspace_dir, self.config, self.python_root)
+        if not runs:
+            return {"status": "skipped", "reason": "; ".join(reasons), "runs": []}
+        limit = timeout if timeout is not None else self.config["test_timeout"]
+        results = [self._run_one_test(run, self.remaining(limit)) for run in runs]
+        statuses = [r["status"] for r in results]
+        status = next((st for st in ("failed", "timeout", "passed") if st in statuses), "skipped")
+        shown = [r for r in results if r["status"] == status] if status != "passed" else results
+        return {
+            "status": status,
+            "command": ", ".join(r["command"] for r in shown),
+            "reason": "; ".join(f"{r['command']}: {r['reason']}" for r in results if r.get("reason")),
+            "duration": round(sum(r["duration"] for r in results), 1),
+            "output_tail": "\n".join(r["output_tail"] for r in shown if r["status"] in ("failed", "timeout")),
+            "runs": results,
+        }
 
     def run_lint_commands(self, timeout: Optional[float] = None) -> List[Dict[str, Any]]:
         violations = []
         limit = timeout if timeout is not None else self.config["test_timeout"]
         for command in self.config["lint_commands"]:
-            rc, out, timed_out = _run_command(str(command), self.workspace_dir, limit, shell=True)
+            budget = self.remaining(limit)
+            if budget <= 0:
+                violations.append(
+                    {"file": str(command), "line": 0, "rule": "LINT_FAILURE", "severity": "WARN",
+                     "message": "not run: gate time budget exhausted"}
+                )
+                continue
+            rc, out, timed_out = _run_command(str(command), self.workspace_dir, budget, shell=True)
             if rc != 0 or timed_out:
                 violations.append(
                     {
@@ -516,10 +745,11 @@ class VerificationPipeline:
         changed: bool = False,
         fast: bool = False,
         test_timeout: Optional[float] = None,
+        scope_label: Optional[str] = None,
     ) -> Tuple[bool, Dict[str, Any]]:
         scope = "full"
         if targets:
-            scope = "targets"
+            scope = scope_label or "targets"
             files = expand_files([Path(t) for t in targets])
         elif changed:
             changed_files = git_changed_files(self.workspace_dir)
@@ -597,32 +827,35 @@ class VerificationPipeline:
         timed_out = False
         if run_tests:
             test_result = self.run_tests(test_timeout)
-            status = test_result["status"]
-            if status == "skipped":
+            if not test_result.get("runs"):
                 skipped.append(f"unit-tests (skipped: {test_result['reason']})")
             else:
-                checks_run.append("unit-tests")
-                if status == "timeout":
-                    timed_out = True
-                    violations.append(
-                        {
-                            "file": test_result["command"],
-                            "line": 0,
-                            "rule": "TEST_TIMEOUT",
-                            "message": f"{test_result['command']} {test_result['reason']}",
-                            "severity": "ERROR",
-                        }
-                    )
-                elif status == "failed":
-                    violations.append(
-                        {
-                            "file": test_result["command"],
-                            "line": 0,
-                            "rule": "UNIT_TEST_FAILURE",
-                            "message": f"`{test_result['command']}` failed",
-                            "severity": "ERROR",
-                        }
-                    )
+                if any(r["status"] != "skipped" for r in test_result["runs"]):
+                    checks_run.append("unit-tests")
+                for r in test_result["runs"]:
+                    if r["status"] == "skipped":
+                        skipped.append(f"unit-tests (skipped: {r['command']}: {r['reason']})")
+                    elif r["status"] == "timeout":
+                        timed_out = True
+                        violations.append(
+                            {
+                                "file": r["command"],
+                                "line": 0,
+                                "rule": "TEST_TIMEOUT",
+                                "message": f"{r['command']} {r['reason']}",
+                                "severity": "ERROR",
+                            }
+                        )
+                    elif r["status"] == "failed":
+                        violations.append(
+                            {
+                                "file": r["command"],
+                                "line": 0,
+                                "rule": "UNIT_TEST_FAILURE",
+                                "message": f"`{r['command']}` failed",
+                                "severity": "ERROR",
+                            }
+                        )
         else:
             skipped.append(f"unit-tests (skipped: {test_result['reason']})")
 
@@ -658,9 +891,12 @@ def format_report(report: Dict[str, Any], tail_lines: int = TAIL_LINES) -> str:
         if v.get("fix"):
             out.append(f"    How to fix: {v['fix']}")
     tests = report.get("tests") or {}
-    if tests.get("status") in ("failed", "timeout") and tests.get("output_tail"):
-        out.append(f"  Last output of `{tests.get('command')}` (tail):")
-        out.extend("    " + l for l in tests["output_tail"].splitlines()[-tail_lines:])
+    runs = [r for r in tests.get("runs") or [] if r.get("status") in ("failed", "timeout") and r.get("output_tail")]
+    if not runs and tests.get("status") in ("failed", "timeout") and tests.get("output_tail"):
+        runs = [{"command": tests.get("command"), "output_tail": tests["output_tail"]}]
+    for r in runs:
+        out.append(f"  Last output of `{r.get('command')}` (tail):")
+        out.extend("    " + l for l in r["output_tail"].splitlines()[-max(tail_lines // len(runs), 10):])
     out.extend(f"  {s}" for s in report.get("skipped", []))
     return "\n".join(out)
 

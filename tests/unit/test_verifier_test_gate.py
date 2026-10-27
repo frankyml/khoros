@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Unit tests for the verification gate's test discovery (`khoros verify --with-tests`):
-- runs tests/unit when present, otherwise tests/, otherwise test/
+- discovers every test location under tests/ (tests/unit is not preferred over its siblings), or test/
 - fails on a failing test in a flat tests/ layout
 - reports, instead of silently passing, when no test directory exists
 """
@@ -48,11 +48,11 @@ class TestVerifierTestGate(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("unit-tests", report["checks_run"])
 
-    def test_tests_unit_preferred(self):
+    def test_tests_unit_does_not_hide_sibling_tests(self):
         self.write("tests/unit/test_x.py", PASSING)
         self.write("tests/test_y.py", FAILING)
         ok, _ = self.run_gate()
-        self.assertTrue(ok)
+        self.assertFalse(ok)
 
     def test_no_tests_is_reported(self):
         ok, report = self.run_gate()
