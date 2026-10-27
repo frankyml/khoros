@@ -12,11 +12,17 @@ v4 is built around what our own benchmark could and could not show. Read the
 These run as Claude Code hooks (see `plugin/hooks/hooks.json`) and do not depend on the agent remembering
 a prompt.
 
-- **Stop-hook gate** (`bin/khoros-gate stop`): when code files changed, runs `bin/khoros verify --changed`
-  including the project's tests. On failure it prints what failed and how to fix it, and the agent keeps working.
-  Safeguards: it gives up after 3 consecutive blocks (`verify.max_stop_blocks`), the test command has a timeout
-  (`verify.test_timeout`, default 240 s), it stays silent when only docs changed, and `KHOROS_GATE=off` or
-  `verify.gate: off` disables it.
+- **Stop-hook gate** (`bin/khoros-gate stop`, with a `session-start` hook that snapshots the tree): verifies what
+  *this session* changed (edits, commits, changed dirty files) with static checks and the project's tests, run
+  with the project's interpreter from the repo root. On failure it blocks the stop with what failed and how to
+  fix it, and the agent keeps working. Failures that were already there when the session started do not block
+  (they are reported as a note). Safeguards: it gives up after 3 consecutive blocks (`verify.max_stop_blocks`)
+  and then stays quiet until the failure changes, one time budget covers the whole gate
+  (`verify.gate_budget`, default 270 s; `verify.test_timeout`, default 240 s, per command), it allows the
+  stop if it cannot persist its state, it is silent on turns that changed nothing or only docs, and
+  `KHOROS_GATE=off` or `verify.gate: off` disables it. State lives in the git dir, not in your work tree.
+  The gate runs your repo's test and lint commands from a hook, without a permission prompt: enable the plugin
+  only in repos you trust.
 - **Per-edit checks** (`bin/khoros-gate post-edit`): fast static checks (syntax, secrets, config parse) on the
   file just edited.
 - **Loop nudge**: one message when the same file has been edited 8 or more times in a session.

@@ -84,11 +84,25 @@ flowchart TD
     D -->|pass or cap reached or timeout| E[Stop allowed]
 ```
 
-1. **Gate (enforced).** `bin/khoros-gate stop` runs `verify --changed`, tests included, when the working tree
-   has changed code files. Failure writes an actionable report to stderr and exits 2, so Claude continues.
-   `bin/khoros-gate post-edit` runs fast static checks on the single edited file and nudges once when a file
-   has been edited 8 or more times in a session. `verify` now runs the project's tests (auto-detected, or
-   `verify.test_command`) and says "skipped: reason" for every check that did not apply. Every failure carries
+1. **Gate (enforced).** Three hooks, all scoped to what the session did, not to what the repo looks like:
+   - `bin/khoros-gate session-start` (SessionStart) snapshots the working tree (tracked, dirty and untracked
+     files) into a tree object, without touching the index or any ref.
+   - `bin/khoros-gate stop` (Stop) diffs the working tree against that snapshot: edits, commits and changed
+     dirty files count, files that were already dirty or red do not. Nothing changed (a Q&A turn) means exit 0
+     silently. Otherwise it runs the static checks on those files and the project's tests. If tests fail it runs
+     the same test command once at the baseline (temporary detached worktree, cached per baseline and command)
+     and blocks only on failures that are new; failures that pre-date the session are reported as a note and do
+     not block. A failure is reported as `{"decision": "block", "reason": ...}` on stdout with exit 0 (exit 2
+     shows "Stop hook error" in the Claude Code UI), and the reason keeps `khoros gate: verification failed
+     (attempt N/M)`. Without a baseline (SessionStart did not run) it falls back to the files post-edit recorded;
+     with neither it does nothing.
+   - `bin/khoros-gate post-edit` (PostToolUse) runs fast static checks on the single edited file, records the
+     edit, and nudges once when a file has been edited 8 or more times in a session.
+
+   Tests run with the project's interpreter (`.venv/bin/python`, `venv/bin/python`, else `python3` on PATH),
+   from the repo root whatever the hook's `cwd`, for every detected ecosystem (python, npm, go, cargo; `make
+   test` only when none of those was found). "0 tests ran" is reported as `skipped: no tests collected`, never
+   as a pass. `verify` says "skipped: reason" for every check that did not apply, and every failure carries
    file:line, what failed and how to fix or reproduce it.
 2. **Minimal always-loaded context.** `CLAUDE.md` of at most 40 lines: commands and rules that cannot be
    inferred. No architecture overview, no personas.
@@ -109,7 +123,7 @@ implemented by the gate and context workstreams; this RFC does not restate them.
 |---|---|---|
 | Triage, spec, task, claim, submit, approve as the default path in `CLAUDE.md` | Moved to the opt-in long-task skill | Used by 0% of free-choice runs; 1.6x latency and 1.18x cost when forced, no solve-rate gain; `approve` was self-approval |
 | Five role agents, personas | Replaced by one reviewer | Delegation "for a better answer" has no support; persona prompting reported to hurt coding [2] |
-| Antigravity-format `plugin/hooks.json` | Replaced by Claude Code hooks (Stop, SubagentStop, PostToolUse) | The old one never blocked anything in Claude Code |
+| Antigravity-format `plugin/hooks.json` | Replaced by Claude Code hooks (SessionStart, Stop, PostToolUse) | The old one never blocked anything in Claude Code |
 | Governor token budget and cache-hit "Andon" | Marked experimental; invented telemetry removed | Inputs were constants |
 | Kernel graph, event store, worktree manager, capsules, kaizen, skill mining, sandbox, GC | Demoted to experimental | No caller outside tests, no benchmark evidence |
 | Claims about AST jigs, causal DAG, bwrap sandbox, mathematical discipline | Corrected or flagged in README and wiki | Not true of the code |
@@ -121,9 +135,12 @@ Nothing was deleted from the tree by this RFC; demoted code stays under `.harnes
 
 | Risk | Mitigation |
 |---|---|
-| **Gate loops**: the Stop hook keeps blocking on a failure the agent cannot fix | Retry cap: after `verify.max_stop_blocks` (default 3) consecutive blocks the gate allows stop and warns that verification is failing; the counter resets on a pass |
-| **Slow test suites** stall every stop | Test command has its own timeout (`verify.test_timeout`, default 240 s, hook timeout 300 s); on timeout the gate reports it and allows stop. `verify --changed` scopes static checks; `post-edit` runs static checks on one file only |
-| **False positives** (a flaky or unrelated failing test blocks correct work) | Retry cap above; reports include the failing output tail so the agent can say the failure is unrelated; escape hatch `KHOROS_GATE=off` or `verify.gate: off` |
+| **Gate loops**: the Stop hook keeps blocking on a failure the agent cannot fix | Retry cap: after `verify.max_stop_blocks` (default 3) consecutive blocks the gate allows stop and warns that verification is failing; the counter resets on a pass. Giving up is sticky: the gate stays quiet for that session until the failure signature changes. If its state cannot be written (read-only checkout, full disk) it allows the stop instead of blocking, because Claude Code's own cap of 8 resets each time the agent calls a tool |
+| **Slow test suites** stall every stop | One deadline for the whole Stop gate (`verify.gate_budget`, default 270 s, under the 300 s hook timeout) is shared by lint, tests and the baseline run; each command gets the smaller of `verify.test_timeout` (240 s) and what is left. Commands run in their own process group with output in temp files, and the group is killed on timeout or when Claude Code cancels the hook. On timeout the gate reports it (together with any static findings) and allows stop |
+| **False positives** (a flaky or unrelated failing test blocks correct work) | Only what the session changed is verified; failures that were already there at session start do not block; retry cap above; reports include the failing output tail; escape hatch `KHOROS_GATE=off` or `verify.gate: off` |
+| **The gate runs repo code without a permission prompt**: `make test`, `npm test`, pytest (`conftest.py`) and the `verify.test_command` / `verify.lint_commands` strings run from a hook, outside Claude Code's Bash permission prompts. Enabling the plugin at user scope and opening an untrusted repo runs that repo's test code on the first stop | Not mitigated in code. Enable the plugin per project, only in repos you trust, or set `verify.gate: off` / `KHOROS_GATE=off` for repos you do not |
+| **Marketplace installs lose the gate**: the hooks call `${CLAUDE_PLUGIN_ROOT}/../bin/khoros-gate`, which only exists when the plugin is loaded in place from a Khoros checkout (`--plugin-dir`). A marketplace install copies only the plugin directory, so the hook fails to start and the gate is silently inert | Known limitation. Load the plugin from a checkout; shipping `bin/` and `.harness/` inside `plugin/` is the fix if it is ever published |
+| **Pre-existing failures that cannot be attributed**: the baseline run needs a clean checkout of the session's starting state (ignored dirs such as `node_modules`, `.venv` are symlinked in) | If the baseline cannot be run or compared (no commit yet, out of time budget), the gate blocks only when it cannot tell, and only up to the retry cap; unparsable failures (not unittest or pytest output) block only if the baseline passed |
 | **Silent skipping** gives false assurance, as in v3.1 | Every skipped check prints "skipped: reason" |
 | Gate adds cost on small edits | Gate is silent when no code files changed (docs and `*.md` excluded); cost is measured, not assumed (section 6) |
 | The gate may simply not help, like the factory | Evaluated against vanilla and placebo before any claim is made; a null result is reported as such |

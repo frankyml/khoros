@@ -1,17 +1,17 @@
 {
   "hooks": {
-    "Stop": [
+    "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/../bin/khoros-gate\" stop",
-            "timeout": 300
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/../bin/khoros-gate\" session-start",
+            "timeout": 60
           }
         ]
       }
     ],
-    "SubagentStop": [
+    "Stop": [
       {
         "hooks": [
           {
