@@ -110,7 +110,7 @@ def context_tax(khoros_root: Path) -> List[Dict[str, Any]]:
     add(f"plugin skill descriptions ({len(skills)})", "every turn (Skill tool listing)",
         "\n".join(frontmatter_description(s) for s in skills))
     add("skill bodies", "when the skill is invoked", "\n".join(s.read_text(encoding="utf-8") for s in skills))
-    add("agent bodies", "when a pdh-* subagent is spawned", "\n".join(a.read_text(encoding="utf-8") for a in agents))
+    add("agent bodies", "when a plugin subagent is spawned", "\n".join(a.read_text(encoding="utf-8") for a in agents))
     return rows
 
 

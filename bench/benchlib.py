@@ -390,8 +390,9 @@ def parse_stream(lines: Iterable[str]) -> Dict[str, Any]:
         "skills": skills,
         "adoption": {
             **{f: khoros_cmds.get(f, 0) > 0 for f in ("triage", "spec", "task", "claim", "submit", "approve", "brief", "verify")},
-            "pdh_subagent": any("pdh-" in kind for kind in subagent_types),
-            "harness_skill": any("development-harness" in s for s in skills),
+            # v3.1 personas (pdh-*) and the v4 reviewer share one column so versions stay comparable
+            "pdh_subagent": any("pdh-" in kind or "khoros-reviewer" in kind for kind in subagent_types),
+            "harness_skill": any("development-harness" in s or "long-task" in s for s in skills),
         },
         "init": init,
         "has_result": result is not None,
