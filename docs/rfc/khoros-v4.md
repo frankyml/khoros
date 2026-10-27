@@ -167,6 +167,15 @@ The benchmark (`bench/`) holds the model fixed and varies the harness. Per `benc
 Success for v4 means H4 holds on the regression suites and H1 or H2 shows a gain on phase 2. If neither does,
 the gate stays as a cheap safety net but the README says it was not shown to improve outcomes.
 
+### 6.1 Results so far
+
+**v4, hard suite (2026-10-27, Sonnet, 2 reps × 6 tasks per arm, `bench/results/v4-hard-sonnet`):** Khoros solved 12/12 (vanilla 11/12, placebo 12/12, Khoros without the gate plugin 12/12). Its cost ratio is 0.97x vanilla (95% CI 0.86x–1.08x), against 1.06x–1.22x for v3.1, so H4 holds on this suite. Every Khoros run tested its code and finished on a verified state (vanilla 75%). The gate never had to block, because no run tried to stop on red tests. The suite is near ceiling, so it shows that v4 no longer costs extra, not that it helps. Whether the gate raises success (H5) needs the phase-2 scenarios, which have not been run on v4.
+
+The live smoke runs (Haiku, a temporary repo) also confirmed that Claude Code loads the plugin as `khoros`, the
+SessionStart baseline is recorded, the Stop gate blocks only on failures that are new since the session started,
+not on failures that were already red, and it releases the stop when the agent stops again without changing
+anything.
+
 ## 7. Open questions
 
 - Whether the gate's gain, if any, comes from the test run or from the extra turn it forces (needs an arm

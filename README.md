@@ -55,8 +55,7 @@ model fixed (Sonnet). On the v3.1 harness, no run showed Khoros raising solve ra
 are near ceiling (vanilla 94-100%), so they can detect harm and cost but not help; Khoros cost 1.05x to 1.22x
 vanilla, and the placebo did about as well as Khoros. In the phase-2 pilot (19 sqlglot tasks), solve rates were
 vanilla 16%, factory workflow 17%, placebo 21% with intervals including zero, while the factory workflow cost
-1.18x and took about 1.6x as long. **v4 has not been benchmarked yet**; the gate is motivated by outside evidence
-(see the RFC), not by our own results. Costs are Claude Code list-price estimates, not bills.
+1.18x and took about 1.6x as long. **v4, hard suite (2026-10-27, Sonnet, 2 reps × 6 tasks per arm, `bench/results/v4-hard-sonnet`):** Khoros solved 12/12 (vanilla 11/12, placebo 12/12, Khoros without the gate plugin 12/12). Its cost ratio is 0.97x vanilla (95% CI 0.86x–1.08x), against 1.06x–1.22x for v3.1, so H4 holds on this suite. Every Khoros run tested its code and finished on a verified state (vanilla 75%). The gate never had to block, because no run tried to stop on red tests. The suite is near ceiling, so it shows that v4 no longer costs extra, not that it helps. Whether the gate raises success (H5) needs the phase-2 scenarios, which have not been run on v4. Costs are Claude Code list-price estimates, not bills.
 
 ## Quick start
 

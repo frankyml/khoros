@@ -158,6 +158,21 @@ class TestTranscriptParsing(unittest.TestCase):
         self.assertTrue(m["adoption"]["pdh_subagent"] and m["adoption"]["harness_skill"])
         self.assertEqual(m["behaviour"]["gate_blocks"], 1)
 
+    def test_khoros_verify_counts_as_test_run_only_when_tests_ran(self):
+        def run(output):
+            events = [
+                {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Edit", "id": "e", "input": {}}]}},
+                {"type": "assistant", "message": {"content": [
+                    {"type": "tool_use", "name": "Bash", "id": "v", "input": {"command": "bin/khoros verify"}}]}},
+                {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "v", "content": output}]}},
+            ]
+            return parse_stream([json.dumps(e) for e in events])["behaviour"]
+        ran = run("✓ Verification passed [scope: full | checks: secret-hygiene, unit-tests]")
+        self.assertEqual((ran["test_runs"], ran["ended_verified"]), (1, True))
+        skipped = run("✓ Verification passed [scope: full | checks: secret-hygiene]\n  unit-tests (skipped: no tests)")
+        self.assertEqual((skipped["test_runs"], skipped["ended_verified"]), (0, False))
+        self.assertEqual(run('{"checks_run": ["secret-hygiene", "python-syntax"]}')["test_runs"], 0)  # v3.1, no tests
+
     def test_behaviour(self):
         def call(name, **inp):
             return {"type": "tool_use", "name": name, "input": inp}

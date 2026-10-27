@@ -47,6 +47,8 @@ escape hatch. Every skipped check is reported as "skipped: reason" so a pass can
 
 Arms `vanilla`, `placebo` and `khoros` on the regression suites (harm and cost) and phase-2 scenarios (help).
 Primary metric for task success is the hidden-test pass share against vanilla; cost ratio must stay under
-1.15 with a 95% CI upper bound. Pilots are labelled inconclusive. v4 has not been benchmarked yet.
+1.15 with a 95% CI upper bound. Pilots are labelled inconclusive.
+
+**v4, hard suite (2026-10-27, Sonnet, 2 reps × 6 tasks per arm, `bench/results/v4-hard-sonnet`):** Khoros solved 12/12 (vanilla 11/12, placebo 12/12, Khoros without the gate plugin 12/12). Its cost ratio is 0.97x vanilla (95% CI 0.86x–1.08x), against 1.06x–1.22x for v3.1, so H4 holds on this suite. Every Khoros run tested its code and finished on a verified state (vanilla 75%). The gate never had to block, because no run tried to stop on red tests. The suite is near ceiling, so it shows that v4 no longer costs extra, not that it helps. Whether the gate raises success (H5) needs the phase-2 scenarios, which have not been run on v4.
 
 *Back to the [Wiki Home](Home.md).*

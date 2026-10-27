@@ -319,6 +319,9 @@ KHOROS_CMD = re.compile(r"(?:^|[\s;&|/])(?:khoros|harness)\s+([a-z-]+)")
 # Harness-neutral behaviour signals, measured the same way in every arm
 TEST_CMD = re.compile(r"\b(?:pytest|unittest|tox|nox|go test|cargo test|npm (?:run )?test|yarn test|jest|mvn test|"
                       r"gradle test|make (?:test|check)|ctest|rspec|phpunit|khoros verify --with-tests|bash tests?/)")
+# `khoros verify` counts as a test run only when its output shows the unit-test check ran (v4 runs tests by
+# default; v3.1 only with --with-tests), so the same rule reads both versions' transcripts correctly
+VERIFY_RAN_TESTS = re.compile(r"unit-tests(?! \(skipped)")
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 # Heuristic: file writes through the shell (redirects, sed -i, patch, Python write calls)
 SHELL_EDIT = re.compile(r"\bsed\s+-i|\bpatch\b|\bgit apply\b|\btee\s+\S+\.\w+|"
@@ -334,6 +337,7 @@ def parse_stream(lines: Iterable[str]) -> Dict[str, Any]:
     skills: Dict[str, int] = {}
     timeline: List[str] = []  # "edit" / "test" in call order, to tell whether work ended verified
     tool_errors = 0
+    verify_calls: set = set()  # tool_use ids of `khoros verify` calls not already counted as tests
     gate_blocks = 0  # times the Khoros v4 Stop gate sent the agent back to work
     init: Dict[str, Any] = {}
     result: Optional[Dict[str, Any]] = None
@@ -367,6 +371,8 @@ def parse_stream(lines: Iterable[str]) -> Dict[str, Any]:
                         timeline.append("edit")
                     if TEST_CMD.search(command):
                         timeline.append("test")
+                    elif "verify" in KHOROS_CMD.findall(command):
+                        verify_calls.add(block.get("id"))
                 elif name in ("Task", "Agent"):
                     kind = str(args.get("subagent_type", "general-purpose"))
                     subagent_types[kind] = subagent_types.get(kind, 0) + 1
@@ -375,6 +381,11 @@ def parse_stream(lines: Iterable[str]) -> Dict[str, Any]:
                     skills[skill] = skills.get(skill, 0) + 1
         elif etype == "user":
             for block in (event.get("message") or {}).get("content") or []:
+                if isinstance(block, dict) and block.get("type") == "tool_result" and block.get("tool_use_id") in verify_calls:
+                    content = block.get("content")
+                    text = content if isinstance(content, str) else json.dumps(content)
+                    if VERIFY_RAN_TESTS.search(text):
+                        timeline.append("test")
                 if isinstance(block, dict) and block.get("type") == "tool_result" and block.get("is_error"):
                     tool_errors += 1
                 elif isinstance(block, dict) and block.get("type") == "text" and "khoros gate" in block.get("text", ""):
