@@ -35,6 +35,7 @@ GIT_EXCLUDES = [
     ".harness/*.log",
     ".harness/worktrees/",
     ".harness/cache/",
+    ".harness/state/",
     ".harness/archives/",
 ]
 
@@ -61,7 +62,7 @@ class Arm:
     name: str
     claude_md: bool = False  # copy Khoros CLAUDE.md into the workspace
     harness: bool = False  # `khoros init` + bin/khoros on PATH
-    plugin: bool = False  # --plugin-dir <khoros>/plugin (pdh-* agents + development-harness skill)
+    plugin: bool = False  # --plugin-dir <khoros>/plugin (v4: verify gate hooks, khoros-reviewer agent, long-task skill)
     preamble: str = ""  # prepended to the task prompt; only the factory arm uses it
     claude_md_source: str = ""  # CLAUDE.md to install instead of Khoros's (path relative to bench/)
 

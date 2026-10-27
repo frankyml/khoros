@@ -105,3 +105,18 @@ every arm, so they detect harm (and measure cost) but cannot detect help. They r
   5. **Phase 1 pool rules:** Terminal-Bench tasks with no oracle verdict after two attempts are excluded. The
      SWE-rebench top-up is a seeded random sample (seed 2026) of 30 standard (non-`_interface`) tasks from the
      downloaded set. On x86-only images every arm installs Claude Code from npm, vanilla included.
+- 2026-10-27 (Khoros v4, before any v4 agent run): v4 replaces prose-only process with enforcement and cuts the
+  always-loaded context (design: `docs/rfc/khoros-v4.md`). The plugin now carries a Stop/SubagentStop hook that runs
+  `khoros verify` (project tests included) on changed code and blocks completion on failure (at most 3 blocks per
+  session), a per-edit static check and a loop nudge; CLAUDE.md shrinks to ≤ 40 lines; the factory workflow moves to
+  an opt-in `long-task` skill; the five `pdh-*` personas become one `khoros-reviewer`.
+  1. **New hypothesis H5:** the v4 gate raises hidden-test pass share (H1's primary metric) on the hard suite and on
+     Phase 2 scenario 1, compared with `vanilla` **and** with `placebo`. Success threshold as H1.
+  2. **Gate attribution:** `khoros` (v4: CLAUDE.md + CLI + plugin with hooks) vs `khoros-noplugin` (same CLAUDE.md
+     and CLI, no hooks) isolates the gate. An effect is attributed to the gate only if `khoros` beats
+     `khoros-noplugin`.
+  3. **H4 is re-tested for v4** with the same threshold (cost ratio upper bound < 1.15). Gate activity (blocks per
+     run, runs whose stop was blocked at least once, runs where the gate gave up) is a reported secondary metric.
+  4. v3.1 results (commit `7770846` and earlier) are not pooled with v4 results; v3.1 vs v4 is compared only
+     through each version's paired contrast against `vanilla` in the same run.
+  5. `.harness/state/` (gate counters) is git-excluded in workspaces so it never reaches graded patches.
