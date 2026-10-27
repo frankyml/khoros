@@ -57,3 +57,4 @@ bench/harbor/certs/
 bench/harbor/jobs/
 bench/harbor/datasets/
 bench/scenarios/cache/
+.worktrees/
