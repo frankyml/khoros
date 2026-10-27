@@ -58,3 +58,6 @@ bench/harbor/jobs/
 bench/harbor/datasets/
 bench/scenarios/cache/
 .worktrees/
+
+# Khoros gate per-session state
+.harness/state/
