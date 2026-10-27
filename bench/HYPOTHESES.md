@@ -106,7 +106,7 @@ every arm, so they detect harm (and measure cost) but cannot detect help. They r
      SWE-rebench top-up is a seeded random sample (seed 2026) of 30 standard (non-`_interface`) tasks from the
      downloaded set. On x86-only images every arm installs Claude Code from npm, vanilla included.
 - 2026-10-27 (Khoros v4, before any v4 agent run): v4 replaces prose-only process with enforcement and cuts the
-  always-loaded context (design: `docs/rfc/khoros-v4.md`). The plugin now carries a Stop/SubagentStop hook that runs
+  always-loaded context (design: `docs/rfc/khoros-v4.md`). The plugin now carries a Stop hook that runs
   `khoros verify` (project tests included) on changed code and blocks completion on failure (at most 3 blocks per
   session), a per-edit static check and a loop nudge; CLAUDE.md shrinks to ≤ 40 lines; the factory workflow moves to
   an opt-in `long-task` skill; the five `pdh-*` personas become one `khoros-reviewer`.
@@ -120,3 +120,7 @@ every arm, so they detect harm (and measure cost) but cannot detect help. They r
   4. v3.1 results (commit `7770846` and earlier) are not pooled with v4 results; v3.1 vs v4 is compared only
      through each version's paired contrast against `vanilla` in the same run.
   5. `.harness/state/` (gate counters) is git-excluded in workspaces so it never reaches graded patches.
+- 2026-10-27 (gate hardening after adversarial review, before any v4 agent run): the gate verifies only what the
+  session changed (baseline recorded by a SessionStart hook), blocks only on failures that are new versus the
+  session's starting tree, keeps its state under the git dir, and no longer hooks SubagentStop. Amendment 1's
+  definitions are unchanged.

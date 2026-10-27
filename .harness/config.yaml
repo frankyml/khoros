@@ -7,6 +7,7 @@ verify:
   test_command: ""    # empty = auto-detect
   lint_commands: []
   test_timeout: 240
+  gate_budget: 270     # seconds for the whole Stop gate; keep below the hook timeout (300)
   max_stop_blocks: 3
   loop_edit_threshold: 8
 
