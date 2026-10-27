@@ -1,5 +1,7 @@
 # Chapter 01: Evolution & Iterations
 
+> **Status: historical record, not current behaviour.** This chapter describes the v1 to v3.1 designs as intended. Several v3 features (jigs at write time, causal attribution, bwrap sandbox, cache-hit targets, kaizen, capsules) are experimental and not wired into the runtime; v4 is described in [chapter 09](09-Khoros-v4-Evidence-Driven-Harness.md).** See [`.harness/EXPERIMENTAL.md`](../.harness/EXPERIMENTAL.md) and the [v4 RFC](../docs/rfc/khoros-v4.md).
+
 **Khoros** represents an architectural journey from simple local developer automations to an industrial-grade, self-improving AI software factory.
 
 ```
@@ -105,7 +107,7 @@ Khoros v3.1 completes the vision with **autonomous capability synthesis, closed-
 4. **"Rule of Two" ($N=2$) Pareto Distillation**:
    - Normalized AST failure signatures trigger automated Poka-Yoke AST jig creation upon recurring at frequency $N \ge 2$, mechanically enforcing **Code > Prompt**.
 5. **Static Prefix Pinning & Dynamic Compaction**:
-   - Pinned 45% static prefix ensures $\ge 85\%$ KV-cache reuse.
+   - Design target of a pinned 45% static prefix for high KV-cache reuse (not measured).
    - Fold, Mask, and Prune algorithms reduce compiler dumps by $\ge 98.5\%$ when working memory exceeds 85% high watermark.
 6. **10-Operator Evolutionary Skill Grammar & Trajectory Mining**:
    - Skills evolve through a 10-operator grammar (`op_add`, `op_refine`, `op_merge`, `op_split`, etc.).

@@ -1,5 +1,7 @@
 # Chapter 07: Developer Guide & CLI Reference
 
+> **Status: mixed.** The `verify`, `task` and `status` commands are current (v4 adds `--fast`, `--changed` and a test run by default; see chapter 09). The capsule authoring section and the kaizen, gc and skill commands are experimental.** See [`.harness/EXPERIMENTAL.md`](../.harness/EXPERIMENTAL.md) and the [v4 RFC](../docs/rfc/khoros-v4.md).
+
 This guide provides practical instructions for operating the **Khoros** CLI (`bin/khoros` or `bin/harness`), authoring custom Agent Capsules, adding In-Station Jigs, and running verification suites.
 
 ---

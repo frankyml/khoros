@@ -1,5 +1,7 @@
 # Chapter 02: Core Architecture — The Microkernel
 
+> **Status: experimental, not wired into the runtime.** The event store, execution graph, worktree manager and in-station jigs described here have no caller outside unit tests. "Worktree sandbox" means a git worktree, not an isolation boundary; no figures here (such as clone times) were measured.** See [`.harness/EXPERIMENTAL.md`](../.harness/EXPERIMENTAL.md) and the [v4 RFC](../docs/rfc/khoros-v4.md).
+
 The core runtime of **Khoros** is built on the classic operating systems principle of **Mechanism vs. Policy separation**. 
 
 The **Khoros Microkernel** provides only execution mechanics: atomic transaction serialization, state transition scheduling, worktree sandboxing, and resource metering. It contains zero knowledge of programming languages, framework conventions, or domain rules.

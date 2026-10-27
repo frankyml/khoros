@@ -1,5 +1,7 @@
 # Chapter 05: Team Organization & Squad Dynamics
 
+> **Status: design only.** Squad assembly and the anti-deadlock engine are not implemented as a runtime. Our benchmark found no gain from multi-role workflows, and v4 keeps a single reviewer agent instead.** See [`.harness/EXPERIMENTAL.md`](../.harness/EXPERIMENTAL.md) and the [v4 RFC](../docs/rfc/khoros-v4.md).
+
 Rather than maintaining rigid, permanent hierarchies or unconstrained chatrooms, **Khoros** organizes agents into **Dynamic Cellular Squads** assembled just-in-time around specific task archetypes.
 
 ```
