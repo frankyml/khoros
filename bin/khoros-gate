@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""
+Khoros v4 - Claude Code hook entrypoint (stdlib only).
+
+  khoros-gate stop       Stop / SubagentStop hook: verify changed code before Claude may finish.
+  khoros-gate post-edit  PostToolUse hook: fast static checks on the edited file + edit-loop detection.
+
+Exit 2 + stderr sends Claude back to work. Any internal error exits 0: the gate must never
+hang or crash a session.
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT_HARNESS_DIR = Path(__file__).resolve().parent.parent / ".harness"
+sys.path.insert(0, str(ROOT_HARNESS_DIR))
+
+NON_CODE_SUFFIXES = (".md", ".markdown", ".txt", ".rst")
+
+
+def read_payload() -> dict:
+    try:
+        raw = sys.stdin.read()
+        data = json.loads(raw) if raw.strip() else {}
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def state_path(cwd: Path, kind: str, session: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", session or "default")[:80]
+    return cwd / ".harness" / "state" / f"{kind}-{safe}.json"
+
+
+def load_state(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_state(path: Path, data: dict) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def gate_disabled(cfg: dict) -> bool:
+    return os.environ.get("KHOROS_GATE", "").strip().lower() == "off" or cfg.get("gate") == "off"
+
+
+def changed_code_files(cwd: Path):
+    """Changed (incl. untracked) code files per git porcelain; None when cwd is not a git repo."""
+    try:
+        proc = subprocess.run(
+            ["git", "status", "--porcelain", "-uall"], cwd=str(cwd), capture_output=True, text=True, timeout=20
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    files = []
+    for line in proc.stdout.splitlines():
+        path = line[3:].split(" -> ")[-1].strip().strip('"')
+        if not path or path.startswith((".harness/", "docs/")) or path.lower().endswith(NON_CODE_SUFFIXES):
+            continue
+        files.append(path)
+    return files
+
+
+def cmd_stop(payload: dict) -> int:
+    from verifier import VerificationPipeline, format_report, load_verify_config
+
+    cwd = Path(payload.get("cwd") or os.getcwd())
+    cfg = load_verify_config(cwd)
+    if gate_disabled(cfg):
+        return 0
+    if not changed_code_files(cwd):
+        return 0
+
+    session = str(payload.get("session_id") or "default")
+    spath = state_path(cwd, "gate", session)
+    state = load_state(spath)
+    blocks = int(state.get("blocks", 0))
+    max_blocks = int(cfg["max_stop_blocks"])
+
+    # stop_hook_active means Claude is already continuing because of an earlier block: still verify,
+    # the retry cap below is what guarantees we never loop forever.
+    _, report = VerificationPipeline(workspace_dir=cwd).run(
+        changed=True, run_tests=True, test_timeout=cfg["test_timeout"]
+    )
+
+    if report["passed"]:
+        try:
+            spath.unlink()
+        except OSError:
+            pass
+        return 0
+
+    if report.get("timed_out"):
+        print(
+            f"khoros gate: tests exceeded {cfg['test_timeout']}s; allowing stop. "
+            "Tell the user verification timed out (raise verify.test_timeout or run the tests by hand).",
+            file=sys.stderr,
+        )
+        return 0
+
+    if blocks >= max_blocks:
+        try:
+            spath.unlink()
+        except OSError:
+            pass
+        print(
+            f"khoros gate gave up after {max_blocks} attempts; tell the user verification is failing.\n"
+            + format_report(report),
+            file=sys.stderr,
+        )
+        return 0
+
+    state["blocks"] = blocks + 1
+    save_state(spath, state)
+    print(
+        f"khoros gate: verification failed (attempt {blocks + 1}/{max_blocks}). "
+        "Fix the root cause, do not skip or weaken checks.\n" + format_report(report),
+        file=sys.stderr,
+    )
+    return 2
+
+
+def cmd_post_edit(payload: dict) -> int:
+    from verifier import VerificationPipeline, format_report, load_verify_config
+
+    cwd = Path(payload.get("cwd") or os.getcwd())
+    cfg = load_verify_config(cwd)
+    if gate_disabled(cfg):
+        return 0
+    tool_input = payload.get("tool_input") or {}
+    raw = tool_input.get("file_path") or tool_input.get("notebook_path")
+    if not raw:
+        return 0
+    fpath = Path(raw)
+    if not fpath.is_absolute():
+        fpath = cwd / fpath
+
+    messages = []
+
+    # loop detection: count edits per file this session
+    session = str(payload.get("session_id") or "default")
+    spath = state_path(cwd, "edits", session)
+    state = load_state(spath)
+    counts = state.setdefault("counts", {})
+    key = str(fpath)
+    counts[key] = int(counts.get(key, 0)) + 1
+    save_state(spath, state)
+    threshold = int(cfg["loop_edit_threshold"])
+    if threshold > 0 and counts[key] % threshold == 0:
+        messages.append(
+            f"khoros gate: {fpath.name} has been edited {counts[key]} times this session. "
+            "Step back: re-read the failing output, and reconsider the approach instead of patching again."
+        )
+
+    if fpath.is_file() and ".harness" not in fpath.parts:
+        _, report = VerificationPipeline(workspace_dir=cwd).run(targets=[fpath], fast=True)
+        if not report["passed"]:
+            messages.insert(0, format_report(report))
+
+    if messages:
+        print("\n".join(messages), file=sys.stderr)
+        return 2
+    return 0
+
+
+def main(argv) -> int:
+    try:
+        payload = read_payload()
+        if len(argv) > 1 and argv[1] == "stop":
+            return cmd_stop(payload)
+        if len(argv) > 1 and argv[1] == "post-edit":
+            return cmd_post_edit(payload)
+        print("usage: khoros-gate stop|post-edit", file=sys.stderr)
+        return 0
+    except Exception as e:  # never break a session because of the gate itself
+        try:
+            print(f"khoros gate: internal error ignored ({type(e).__name__}: {e})", file=sys.stderr)
+        except Exception:
+            pass
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
