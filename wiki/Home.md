@@ -2,7 +2,7 @@
 
 Welcome to the official documentation and knowledge base for **Khoros (Χορός)** *(formerly Personal Development Harness / PDH)*.
 
-Named after the synchronized classical Greek ensemble led by the *Coryphaeus* (our Player-Coach Lead Orchestrator), **Khoros** is an autonomous software engineering operating system and microkernel designed to orchestrate single-agent and multi-agent squads with the mathematical discipline, precision tooling jigs, and quality controls of an industrial software factory.
+Named after the synchronized classical Greek ensemble led by the *Coryphaeus* (our Player-Coach Lead Orchestrator), **Khoros** is an autonomous software engineering operating system and microkernel designed to orchestrate single-agent and multi-agent squads with quality controls borrowed from industrial manufacturing. Parts of that design are implemented and parts are experimental; the status of each is stated in its chapter.
 
 ---
 
@@ -18,6 +18,9 @@ Named after the synchronized classical Greek ensemble led by the *Coryphaeus* (o
 | **06** | [The Kaizen Self-Improvement Engine](06-The-Kaizen-Self-Improvement-Engine.md) | Causal credit attribution ($\vec{\alpha}$), Code > Prompt invariant, and quarantined proposal ledgers. |
 | **07** | [Developer Guide & CLI Reference](07-Developer-Guide-and-CLI-Reference.md) | CLI commands, running verification gates, authoring capsules, and development workflows. |
 | **08** | [Autonomous Capabilities & Library Hygiene](08-Autonomous-Capabilities-and-Library-Hygiene.md) | Dynamic tool synthesis, AST risk classification, clean-trunk canaries, evolutionary skill grammar, and generational GC. |
+| **09** | [Khoros v4: Evidence-Driven Harness](09-Khoros-v4-Evidence-Driven-Harness.md) | Current design: Stop-hook gate, minimal context, opt-in long-task skill, single reviewer, and benchmark status. |
+
+> Chapters 01-08 describe the v3 design. Each opens with a status note saying what is experimental or not wired into the runtime.
 
 ---
 
@@ -26,17 +29,19 @@ Named after the synchronized classical Greek ensemble led by the *Coryphaeus* (o
 **Khoros** is governed by three non-negotiable architectural invariants:
 
 1. **The Separation Invariant (Mechanism vs. Policy)**:  
-   The core engine (Kernel) must contain zero domain knowledge. It provides distributed OS mechanics (state machines, transactions, sandboxes). All domain logic, personas, and verification criteria live strictly in declarative Agent Capsules.
+   The core engine (Kernel) must contain zero domain knowledge. It provides distributed OS mechanics (state machines, transactions, sandboxes). The intent is that domain logic and verification criteria live in declarative Agent Capsules; in practice no capsule files exist yet and domain checks are opt-in configuration (for example design tokens only when `.harness/design-tokens.json` is present).
 
 2. **The Determinism Invariant (Code > Prompt)**:  
-   *"Never keep in a prompt what can be enforced by a deterministic linter or test fixture."* Mechanical violations (syntax, design tokens, secrets) must be stopped by computational AST jigs before reaching the LLM context window.
+   *"Never keep in a prompt what can be enforced by a deterministic linter or test fixture."* Mechanical violations (syntax, design tokens, secrets) should be stopped by deterministic checks rather than prose. In v4 these are the `verify` checks run by the Stop-hook gate and the per-edit hook; the write-time "AST jig" runner is experimental and not hooked to any write.
 
 3. **The Zero-Defect Invariant (Quality at the Source / *Jidoka*)**:  
-   Defects must be detected and corrected in-station at write time. Flawed artifacts cannot move downstream to pollute other squads or the main branch.
+   Defects should be caught as early as practical. In v4 that means per-edit static checks and a gate that blocks the agent from stopping while tests fail, with a retry cap and an escape hatch. It is not a guarantee: `verify` only checks what it can detect.
 
 ---
 
 ## System Topology Map
+
+*The diagram below is the v3 design intent, not the v4 runtime (see [chapter 09](09-Khoros-v4-Evidence-Driven-Harness.md) for that).*
 
 ```mermaid
 flowchart TD

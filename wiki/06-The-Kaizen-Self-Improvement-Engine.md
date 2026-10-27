@@ -1,5 +1,7 @@
 # Chapter 06: The Kaizen Self-Improvement Engine
 
+> **Status: experimental, not wired into the runtime.** The "causal elimination DAG" is a short if/else returning fixed weight vectors (`kaizen/attribution.py`), and the distillation entry point is called only from tests, so no real failure has produced a proposal. Statements below that jigs "guarantee 100% mechanical enforcement" describe the intent only.** See [`.harness/EXPERIMENTAL.md`](../.harness/EXPERIMENTAL.md) and the [v4 RFC](../docs/rfc/khoros-v4.md).
+
 The **Kaizen Engine** enables **Khoros** to continuously learn from failures and developer corrections without suffering from prompt drift, hallucinated constraints, or catastrophic forgetting.
 
 ```
@@ -63,9 +65,9 @@ Khoros operates under a fundamental meta-learning rule:
 
 > **"Never keep in a prompt what can be enforced by a deterministic linter or test."**
 
-If a failure pattern (e.g. hardcoded font sizes, missing null checks, raw color literals) occurs $\ge 2$ times in the failure logs, the Kaizen engine automatically synthesizes an AST regex check or unit test into `.harness/verifier.py` or `.harness/kernel/jigs.py`.
+If a failure pattern (e.g. hardcoded font sizes, missing null checks, raw color literals) occurs $\ge 2$ times in the failure logs, the Kaizen engine is designed to synthesize an AST regex check or unit test into `.harness/verifier.py` or `.harness/kernel/jigs.py`.
 
-This permanently eliminates cognitive load from the prompt, consumes **zero prompt tokens**, and guarantees 100% mechanical enforcement.
+This permanently eliminates cognitive load from the prompt, would consume no prompt tokens, and would make the check mechanical once a jig exists (in practice only one placeholder jig was ever synthesized).
 
 ---
 
