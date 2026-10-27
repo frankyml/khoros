@@ -146,6 +146,16 @@ class TestConfigReader(VerifyEngineBase):
         cfg = load_verify_config(self.ws)
         self.assertEqual((cfg["lint_commands"], cfg["gate"]), ([], "on"))
 
+    def test_quoted_value_followed_by_comment(self):
+        self.write(".harness/config.yaml", 'verify:\n  test_command: ""    # empty = auto-detect\n  gate: "on"  # x\n')
+        cfg = load_verify_config(self.ws)
+        self.assertEqual((cfg["test_command"], cfg["gate"]), ("", "on"))
+
+    def test_shipped_config_parses_to_defaults(self):
+        shipped = Path(__file__).resolve().parents[2] / ".harness" / "config.yaml"
+        self.write(".harness/config.yaml", shipped.read_text(encoding="utf-8"))
+        self.assertEqual(load_verify_config(self.ws)["test_command"], "")
+
 
 class TestStaticChecks(VerifyEngineBase):
     def run_pipeline(self, **kw):

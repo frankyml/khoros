@@ -59,7 +59,10 @@ FIX_HINTS = {
 
 def _parse_scalar(raw: str) -> Any:
     raw = raw.strip()
-    if " #" in raw and not raw.startswith(("'", '"')):
+    quoted = re.match(r"""("[^"]*"|'[^']*')\s*(#.*)?$""", raw)
+    if quoted:  # a quoted value may be followed by a comment: `""  # empty = auto-detect`
+        return quoted.group(1)[1:-1]
+    if " #" in raw:
         raw = raw.split(" #", 1)[0].strip()
     if raw.startswith("[") and raw.endswith("]"):
         inner = raw[1:-1].strip()
