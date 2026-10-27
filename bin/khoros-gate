@@ -313,6 +313,14 @@ def cmd_stop(payload: dict) -> int:
     max_blocks = int(cfg["max_stop_blocks"])
     deadline = started + float(cfg["gate_budget"])
 
+    # stall: nothing changed since the last block, so blocking again would only burn a turn on the same result
+    now = snapshot_tree(root)
+    tree_now = now["tree"] if now else ""
+    if tree_now and gstate.get("tree") == tree_now and not gstate.get("gave_up"):
+        save_state(gpath, {**gstate, "gave_up": True})
+        return allow("khoros gate: no changes since the last failed verification; releasing the stop. "
+                     "Tell the user verification is still failing and why.")
+
     existing = [root / f for f in files if (root / f).is_file()]
     # an explicit target list that is empty would mean "everything", so point it at nothing instead
     _, report = VerificationPipeline(workspace_dir=root, deadline=deadline).run(
@@ -364,14 +372,14 @@ def cmd_stop(payload: dict) -> int:
     blocks = 0 if gstate.get("signature") != sig and gstate.get("gave_up") else int(gstate.get("blocks", 0))
 
     if blocks >= max_blocks:
-        save_state(gpath, {"blocks": blocks, "gave_up": True, "signature": sig})
+        save_state(gpath, {"blocks": blocks, "gave_up": True, "signature": sig, "tree": tree_now})
         return allow(
             f"khoros gate gave up after {max_blocks} attempts; tell the user verification is failing.",
             clamp_lines(format_report(report, tail_lines=20), 25),
             *notes,
         )
 
-    if not save_state(gpath, {"blocks": blocks + 1, "gave_up": False, "signature": sig}):
+    if not save_state(gpath, {"blocks": blocks + 1, "gave_up": False, "signature": sig, "tree": tree_now}):
         # the counter cannot advance, so blocking could repeat forever: fail open
         return allow("khoros gate: cannot persist its retry counter; allowing stop without blocking.", *notes)
 

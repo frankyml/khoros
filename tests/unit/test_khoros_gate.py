@@ -121,18 +121,33 @@ class TestGateStop(GateBase):
         self.write("tests/test_x.py", FAILING)
         self.write(".harness/config.yaml", "verify:\n  max_stop_blocks: 2\n")
         self.assertEqual(self.stop()[1]["decision"], "block")
+        self.write("app.py", "x = 1\n")  # the agent keeps working, so the gate is not stalled
         self.assertEqual(self.stop({"stop_hook_active": True})[1]["decision"], "block")
+        self.write("app.py", "x = 2\n")
         rc, out, _ = self.stop({"stop_hook_active": True})
         self.assertEqual(rc, 0)
         self.assertNotIn("decision", out)
         self.assertIn("gave up after 2 attempts", out["systemMessage"])
+
+    def test_stall_releases_when_nothing_changed_since_the_block(self):
+        self.start()
+        self.write("tests/test_x.py", FAILING)
+        self.assertEqual(self.stop()[1]["decision"], "block")
+        rc, out, _ = self.stop({"stop_hook_active": True})  # the agent stopped again without touching anything
+        self.assertEqual(rc, 0)
+        self.assertNotIn("decision", out)
+        self.assertIn("no changes since the last failed verification", out["systemMessage"])
+        self.write("tests/test_x.py", FAILING + "\n# edited\n")  # new work on the same failure: verify again
+        self.assertEqual(self.stop()[1], {})  # same failure signature, already given up
+        self.write("tests/test_y.py", FAILING.replace("test_bad", "test_other"))
+        self.assertEqual(self.stop()[1]["decision"], "block")
 
     def test_give_up_sticks_until_the_failure_changes(self):
         self.start()
         self.write("tests/test_x.py", FAILING)
         self.write(".harness/config.yaml", "verify:\n  max_stop_blocks: 1\n")
         self.assertEqual(self.stop()[1]["decision"], "block")
-        self.assertIn("gave up", self.stop()[1]["systemMessage"])
+        self.assertIn("no changes since the last failed verification", self.stop()[1]["systemMessage"])
         for _ in range(3):  # D1: the old gate reset its counter on give-up and blocked again forever
             self.assertEqual(self.stop()[1], {})
         self.write("tests/test_y.py", FAILING.replace("test_bad", "test_other"))  # a different failure
@@ -327,7 +342,8 @@ class TestGateFailSafe(GateBase):
         self.start()
         self.write("tests/test_x.py", FAILING)
         self.assertEqual(self.stop()[1]["decision"], "block")
-        self.assertEqual(self.stop()[1]["decision"], "block")
+        self.write("app.py", "x = 1\n")  # keep working so the second stop is not a stall
+        self.assertEqual(self.stop()[1]["decision"], "block")  # the counter persisted in the fallback dir
 
     def test_test_timeout_does_not_wait_for_daemonized_children(self):  # D8a
         self.start()
