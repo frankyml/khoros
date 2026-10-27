@@ -1,9 +1,0 @@
-{
-  "name": "personal-development-harness",
-  "description": "Khoros (formerly Personal Development Harness) v3.1 with Player-Coach Lead Orchestrator (@lead), Blackboard DAG task contracts, autonomous capability synthesis, evolutionary skill grammar, generational GC, and universal verification gates.",
-  "suggestedPrompts": [
-    "Triage this task with Khoros v3.1 and design an execution plan",
-    "Run khoros status and verify all active project gates",
-    "Create a technical RFC spec and decompose it into blackboard DAG tasks"
-  ]
-}

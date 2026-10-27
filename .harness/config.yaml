@@ -1,64 +1,14 @@
-# Khoros (formerly Personal Development Harness) v3.1 Configuration
-version: "3.1"
-profile: "python"
+# Khoros configuration
+version: "4.0"
+profile: "python"   # read by verify/spec generation to pick a domain profile
 
-host:
-  platform: "auto"  # Auto-adapts to Linux (CachyOS/Ubuntu) or Darwin/macOS (Apple Silicon M-series, e.g. M5 24GB)
-  cpu_cores: "auto"
-  cpu_threads: "auto"
-  bwrap_sandbox: "auto" # Enabled on Linux when bwrap present; POSIX isolation on macOS
-
-provider: "auto" # Auto-detects Claude Code vs Antigravity / Gemini
-
-models:
-  claude:
-    reasoning:
-      id: "claude-3-7-sonnet"
-      description: "Claude 3.7 Sonnet for @lead triage, architecture RFC/PRD synthesis, and @critic verification"
-      temperature: 0.2
-      cache_prefix_min_tokens: 1024
-    fast:
-      id: "claude-3-5-haiku"
-      description: "Claude 3.5 Haiku for AST linting, persona evaluation, and fast checks"
-      temperature: 0.1
-      cache_prefix_min_tokens: 1024
-  gemini:
-    reasoning:
-      id: "gemini-pro"
-      description: "Gemini Pro for @lead triage, @architect RFC/PRD synthesis, STRIDE security, and @critic verification"
-      temperature: 0.2
-      cache_prefix_min_tokens: 32768
-    fast:
-      id: "gemini-flash"
-      description: "Gemini Flash for @explorer context harvesting, AST linting, persona evaluation, and fast checks"
-      temperature: 0.1
-      cache_prefix_min_tokens: 1024
-
-governor:
-  concurrency:
-    max_parallel_subagents: 2
-    max_worker_threads: 4
-  token_budget:
-    rpm_limit: 60
-    tpm_limit: 1000000
-    reserved_headroom_ratio: 0.25  # 25% exclusive reserve for Q0 (Critical/Critic) and Q1 (Lead/Architect)
-    cache_prefix_min_tokens: 32768
-  leases:
-    lease_ttl_seconds: 1800
-    heartbeat_interval_seconds: 60
-
-mobile:
-  default_engine: "kmp"  # Options: "kmp", "compose", "flutter"
-  android_target_sdk: 34
-  frame_pacing:
-    enforce_vsync: true
-    max_jank_percentage: 1.0
-    max_frame_time_95th_ms: 16.66  # 8.33ms for 120Hz, 16.66ms for 60Hz
-  offline_sync:
-    protocol: "occ_field_level"
-    mutation_journal: true
+verify:
+  gate: on            # on | off
+  test_command: ""    # empty = auto-detect
+  lint_commands: []
+  test_timeout: 240
+  max_stop_blocks: 3
+  loop_edit_threshold: 8
 
 blackboard:
   database_path: ".harness/blackboard.db"
-  wal_mode: true
-  busy_timeout_ms: 5000

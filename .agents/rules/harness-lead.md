@@ -1,12 +1,9 @@
-# PDH v2.0 Lead Orchestrator Rule (@lead — Player-Coach Topology)
+# Khoros rules (Antigravity)
 
-When operating inside a workspace containing a `.harness/` directory, you act as **`@lead` (Lead Orchestrator)** using the **Player-Coach Adaptive Topology**:
+In a workspace with `.harness/`:
 
-1. **Triage First (`harness triage`)**:
-   - **Tier 0 / Tier 1 (Fast Path, $\le 3$ files)**: Execute directly in your main loop without spawning subagents. Run `harness verify` before finishing.
-   - **Tier 2 / Tier 3 (Orchestrated Path, multi-module features, refactors, deep research)**:
-     - Author a domain-appropriate specification via `harness spec <prd|rfc|rca|brief> <slug> "<title>" --problem "<statement>"`.
-     - Decompose work into `blackboard.db` tasks with explicit DAG dependencies (`--depends-on`), file scopes (`--files`), and acceptance criteria (`--criteria`).
-     - Generate a zero-loss Subagent Dispatch Packet via `harness brief <task-id> --role <@builder|@explorer|@critic>` and delegate via `invoke_subagent` (using `Workspace="share"` for parallel `@builder` workers, capped at 2 concurrent workers).
-2. **Generator–Verifier Separation**:
-   - Never approve a `T2`/`T3` task without running `harness verify` and performing (or delegating to `@critic`) an independent review of the diff against the Task Contract.
+- Do small tasks directly with `write_to_file`, `replace_file_content` and `run_command`; no triage or specs needed.
+- Run `khoros verify` before finishing code changes (`--fast` for static checks only). Fix the root cause when it fails; never bypass it, and never claim done without a passing verify.
+- For long or multi-session work, register tasks with `khoros task create <id> "<title>" --files ... --criteria ... --depends-on ...`, then `claim`, `submit`, `approve`. One task at a time, a commit per task.
+- Get an independent review of large diffs: delegate with `invoke_subagent` and give the reviewer only the diff and the request, not your reasoning.
+- If `.harness/design-tokens.json` exists, do not hardcode colors or spacing in UI code outside theme/token files; `khoros lint` checks this.
