@@ -334,6 +334,7 @@ def parse_stream(lines: Iterable[str]) -> Dict[str, Any]:
     skills: Dict[str, int] = {}
     timeline: List[str] = []  # "edit" / "test" in call order, to tell whether work ended verified
     tool_errors = 0
+    gate_blocks = 0  # times the Khoros v4 Stop gate sent the agent back to work
     init: Dict[str, Any] = {}
     result: Optional[Dict[str, Any]] = None
     for raw in lines:
@@ -376,6 +377,10 @@ def parse_stream(lines: Iterable[str]) -> Dict[str, Any]:
             for block in (event.get("message") or {}).get("content") or []:
                 if isinstance(block, dict) and block.get("type") == "tool_result" and block.get("is_error"):
                     tool_errors += 1
+                elif isinstance(block, dict) and block.get("type") == "text" and "khoros gate" in block.get("text", ""):
+                    text = block["text"]
+                    if "Stop hook" in text and "verification failed" in text:
+                        gate_blocks += 1
         elif etype == "result":
             result = event
 
@@ -406,6 +411,7 @@ def parse_stream(lines: Iterable[str]) -> Dict[str, Any]:
             "edits": timeline.count("edit"),
             "tool_errors": tool_errors,
             "used_todos": tools.get("TodoWrite", 0) > 0,
+            "gate_blocks": gate_blocks,
         },
     }
     if result is None:

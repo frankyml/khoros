@@ -309,9 +309,9 @@ def render(recs: List[Record], manifest: Dict[str, Any], baseline: str, iters: i
         share = lambda key: pct(sum(bool(r["behaviour"].get(key)) for r in group) / len(group)) if group else "–"  # noqa: E731
         med = lambda key: num(median([float(r["behaviour"].get(key, 0)) for r in group])) if group else "–"  # noqa: E731
         rows.append([f"`{arm}`", share("ran_tests"), share("ended_verified"), med("test_runs"), med("edits"),
-                     med("tool_errors"), share("used_todos")])
+                     med("tool_errors"), share("used_todos"), share("gate_blocks")])
     lines.append(table(["arm", "ran tests", "ended on verified code", "median test runs", "median edits",
-                        "median tool errors", "used to-do planning"], rows))
+                        "median tool errors", "used to-do planning", "blocked by gate"], rows))
 
     lines += ["", "## Khoros feature adoption", "",
               "Share of runs that used each feature at least once. A feature nobody uses cannot be what helps or hurts.", ""]

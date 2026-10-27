@@ -144,6 +144,20 @@ class TestTranscriptParsing(unittest.TestCase):
                          {"triage", "task", "claim", "pdh_subagent", "harness_skill"})
         self.assertEqual(m["subagent_types"], {"plugin:pdh-critic": 1})
 
+    def test_v4_adoption_and_gate_blocks(self):
+        events = [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "name": "Agent", "input": {"subagent_type": "khoros:khoros-reviewer", "prompt": "review"}},
+                {"type": "tool_use", "name": "Skill", "input": {"skill": "khoros:long-task"}},
+            ]}},
+            {"type": "user", "message": {"content": [{"type": "text", "text": (
+                "Stop hook feedback:\n[bin/khoros-gate stop]: khoros gate: verification failed (attempt 1/3).")}]}},
+            {"type": "user", "message": {"content": [{"type": "text", "text": "an unrelated message"}]}},
+        ]
+        m = parse_stream([json.dumps(e) for e in events])
+        self.assertTrue(m["adoption"]["pdh_subagent"] and m["adoption"]["harness_skill"])
+        self.assertEqual(m["behaviour"]["gate_blocks"], 1)
+
     def test_behaviour(self):
         def call(name, **inp):
             return {"type": "tool_use", "name": name, "input": inp}
