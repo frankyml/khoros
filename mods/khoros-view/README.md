@@ -41,6 +41,26 @@ claude --plugin-dir /path/to/khoros/plugin --plugin-dir /path/to/khoros/mods/kho
 The gate's hooks come from `plugin/`; without them the pane says the gate is not loaded and shows only cost
 and tasks. The mod finds `bin/khoros` next to itself (`../../bin/khoros`), else in the project, else on `PATH`.
 
+### In the Claude Code Desktop app
+
+The Desktop app takes no `--plugin-dir`. Point `CLAUDE_CODE_PLUGIN_DIRS` at both folders of your Khoros checkout,
+under `env` in `~/.claude/settings.json` (absolute paths, separated by `:`):
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_PLUGIN_DIRS": "/path/to/khoros/plugin:/path/to/khoros/mods/khoros-view"
+  }
+}
+```
+
+Every new session then loads them, in the Desktop app's local sessions and in the terminal alike, from your
+checkout (so they follow the branch you have checked out). Outside a repo with `.harness/config.yaml` both stay
+idle: the gate does nothing and the mod adds no status line and no tool. WSL and cloud sessions don't run mods.
+
+Don't install them through a local marketplace instead: Claude Code copies installed plugins to a cache, and the
+gate's hooks then can't find `bin/khoros-gate`.
+
 ## Develop
 
 ```bash

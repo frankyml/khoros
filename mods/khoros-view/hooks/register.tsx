@@ -346,7 +346,8 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const current = await read($, tab)
-    const rows = Math.max(6, (e.viewport?.rows ?? 30) - 6)
+    // the pane's own height: e.viewport.rows is the whole window in the terminal and the Desktop app
+    const rows = Math.max(6, (e.props.scroll?.bodyRows ?? 24) - 3)
     const select = (t: Tab) => () => {
       void update($, tab, () => t)
       if (t === 'tasks') void refreshTasks($)
@@ -436,7 +437,7 @@ export const register: Register = on => {
           {t.error && <Text color="error" wrap="truncate-end">{t.error}</Text>}
           {!t.error && t.tasks.length === 0 && <Text dimColor>No tasks. The long-task skill creates them for multi-session work.</Text>}
           {t.tasks.slice(0, rows - 2).map(x => (
-            <Text key={x.id} wrap="truncate-end">
+            <Text key={x.id} mono wrap="truncate-end">
               <Text color={color(x.status)}>{x.status.padEnd(16)}</Text>
               {` ${x.id}  `}
               <Text dimColor>{x.title}{x.owner ? ` · ${x.owner}` : ''}{x.deps.length ? ` · after ${x.deps.join(',')}` : ''}</Text>
@@ -445,13 +446,13 @@ export const register: Register = on => {
         </Box>
       )
     } else {
-      const h = await read($, history)
+      const records = await read($, history)
       body = (
         <Box flexDirection="column">
-          {h.length === 0 && <Text dimColor>No sessions recorded yet. Each Khoros session is saved as it goes.</Text>}
-          {h.length > 0 && <Text dimColor>{'date        repo            runs  ✓   ✗   tokens   cost'}</Text>}
-          {h.slice(0, rows - 1).map(r => (
-            <Text key={r.id} wrap="truncate-end">
+          {records.length === 0 && <Text dimColor>No sessions recorded yet. Each Khoros session is saved as it goes.</Text>}
+          {records.length > 0 && <Text dimColor mono>{'date        repo            runs  ✓   ✗   tokens   cost'}</Text>}
+          {records.slice(0, rows - 1).map(r => (
+            <Text key={r.id} mono wrap="truncate-end">
               {`${day(r.updatedAt)}  ${r.repo.slice(0, 14).padEnd(14)}  ${String(r.runs).padStart(4)}  ${String(r.passes).padStart(2)}  `}
               <Text color={r.blocks ? 'error' : undefined}>{String(r.blocks).padStart(2)}</Text>
               {`  ${k(r.tokens).padStart(7)}  ${r.usd !== undefined ? '$' + r.usd.toFixed(2) : '-'}`}

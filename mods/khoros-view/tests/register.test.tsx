@@ -142,3 +142,15 @@ test('outside a Khoros repo the mod adds no tool and no status line', async ($, 
   expect(tools).toEqual([])
   expect(statuses.filter(s => s !== undefined)).toEqual([])
 })
+
+test('every tab draws in the Desktop app', async ($, on) => {
+  repo(on, { runs: [BLOCK] })
+  await $.session.start({ cwd: '/repo', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /blocked, attempt 1\/3/ })).toBeDefined()
+  for (const [key, text] of [['tab-cost', /Cache hit rate/], ['tab-tasks', /CLAIMED/], ['tab-history', /No sessions recorded yet/]] as const) {
+    await $.ui.press({ plugin: 'khoros-view', requestId: 'khoros', key, surface: 'desktop' })
+    expect(await ui.find({ type: 'Text', text })).toBeDefined()
+  }
+  await ui.unmount()
+})

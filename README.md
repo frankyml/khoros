@@ -21,8 +21,9 @@ a prompt.
   (`verify.gate_budget`, default 270 s; `verify.test_timeout`, default 240 s, per command), it allows the
   stop if it cannot persist its state, it is silent on turns that changed nothing or only docs, and
   `KHOROS_GATE=off` or `verify.gate: off` disables it. State lives in the git dir, not in your work tree.
-  The gate runs your repo's test and lint commands from a hook, without a permission prompt: enable the plugin
-  only in repos you trust.
+  The gate acts only in repos with a `.harness/config.yaml` (run `bin/khoros init`); elsewhere every hook does
+  nothing, so loading the plugin for all sessions is safe. It runs your repo's test and lint commands from a
+  hook, without a permission prompt: set up Khoros only in repos you trust.
 - **Per-edit checks** (`bin/khoros-gate post-edit`): fast static checks (syntax, secrets, config parse) on the
   file just edited.
 - **Loop nudge**: one message when the same file has been edited 8 or more times in a session.
@@ -42,7 +43,8 @@ command). It is not proof of correctness.
   and cost (Claude Code's list-price estimate) and the task board, with buttons to run verify, re-run the failing
   check and turn the gate off for the session. It also gives Claude a read-only status tool, loaded on every turn;
   the `khoros-view` bench arm measures its cost (H6). Load it with
-  `claude --plugin-dir plugin --plugin-dir mods/khoros-view`. See [its README](mods/khoros-view/README.md).
+  `claude --plugin-dir plugin --plugin-dir mods/khoros-view`, or in the Desktop app through
+  `CLAUDE_CODE_PLUGIN_DIRS`. See [its README](mods/khoros-view/README.md).
 
 ## What is experimental
 

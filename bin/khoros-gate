@@ -121,6 +121,11 @@ def prune_stale_state(sd: Path) -> None:
         pass
 
 
+def is_khoros_repo(root: Path) -> bool:
+    """The gate acts only where Khoros is set up, so loading the plugin for every session is safe."""
+    return (root / ".harness" / "config.yaml").is_file()
+
+
 def gate_disabled(cfg: dict, sd=None, session: str = "") -> bool:
     """Off by env, by config, or for one session by `off-<session>.json` holding {"off": true} (the khoros-view mod)."""
     if os.environ.get("KHOROS_GATE", "").strip().lower() == "off" or cfg.get("gate") == "off":
@@ -317,7 +322,7 @@ def cmd_stop(payload: dict) -> int:
         return 0
     cwd = Path(payload.get("cwd") or os.getcwd())
     root = repo_root(cwd)
-    if root is None:
+    if root is None or not is_khoros_repo(root):
         return 0
     cfg = load_verify_config(root)
     if gate_disabled(cfg):
@@ -444,7 +449,7 @@ def cmd_session_start(payload: dict) -> int:
 
     cwd = Path(payload.get("cwd") or os.getcwd())
     root = repo_root(cwd)
-    if root is None or gate_disabled(load_verify_config(root)):
+    if root is None or not is_khoros_repo(root) or gate_disabled(load_verify_config(root)):
         return 0
     sd = state_dir(root)
     if sd is None:
@@ -469,6 +474,8 @@ def cmd_post_edit(payload: dict) -> int:
 
     cwd = Path(payload.get("cwd") or os.getcwd())
     root = repo_root(cwd) or cwd
+    if not is_khoros_repo(root):
+        return 0
     cfg = load_verify_config(root)
     if gate_disabled(cfg):
         return 0

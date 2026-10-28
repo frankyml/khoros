@@ -36,6 +36,7 @@ class GateBase(unittest.TestCase):
         self.git("config", "user.email", "t@t")
         self.git("config", "user.name", "t")
         self.write("README.md", "# t\n")
+        self.write(".harness/config.yaml", "version: 4.0\n")  # the gate acts only in Khoros repos
         self.git("add", "-A")
         self.git("commit", "-qm", "init")
 
@@ -413,6 +414,18 @@ class TestGateFailSafe(GateBase):
         self.assertEqual(out["decision"], "block")
         self.assertIn("test_from_venv", out["reason"])
         self.assertIn(".venv/bin/python -m unittest", out["reason"])
+
+
+class TestGateScope(GateBase):
+    def test_repo_without_khoros_config_is_left_alone(self):
+        (self.ws / ".harness" / "config.yaml").unlink()
+        self.commit_all("remove khoros")
+        self.start()
+        self.write("tests/test_x.py", FAILING)
+        self.assertEqual(self.stop()[1], {})
+        self.assertFalse(self.khoros_dir().exists())
+        proc = self.gate("post-edit", {"tool_input": {"file_path": str(self.write("bad.py", "def f(:\n"))}})
+        self.assertEqual((proc.returncode, proc.stderr), (0, ""))
 
 
 class TestGateViewerState(GateBase):
