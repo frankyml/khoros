@@ -31,7 +31,7 @@ class TestPhase1CLI(unittest.TestCase):
         res = subprocess.run([str(khoros_bin), "--help"], capture_output=True, text=True)
         self.assertEqual(res.returncode, 0)
         self.assertIn("khoros", res.stdout)
-        self.assertIn("Khoros (PDH v3.1)", res.stdout)
+        self.assertIn("Khoros v4", res.stdout)
 
     def test_harness_symlink_points_to_khoros(self):
         root = Path(__file__).resolve().parent.parent.parent
@@ -42,7 +42,7 @@ class TestPhase1CLI(unittest.TestCase):
 
         res = subprocess.run([str(harness_bin), "--help"], capture_output=True, text=True)
         self.assertEqual(res.returncode, 0)
-        self.assertIn("Khoros (PDH v3.1)", res.stdout)
+        self.assertIn("Khoros v4", res.stdout)
 
 
 class TestPhase1Blackboard(unittest.TestCase):

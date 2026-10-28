@@ -30,6 +30,7 @@ NON_CODE_SUFFIXES = (".md", ".markdown", ".txt", ".rst")
 TEST_RULES = ("UNIT_TEST_FAILURE", "TEST_TIMEOUT")
 REASON_MAX_LINES = 60
 STALE_STATE_SECONDS = 14 * 24 * 3600
+RUNS_KEPT = 50
 
 
 def read_payload() -> dict:
@@ -120,8 +121,34 @@ def prune_stale_state(sd: Path) -> None:
         pass
 
 
-def gate_disabled(cfg: dict) -> bool:
-    return os.environ.get("KHOROS_GATE", "").strip().lower() == "off" or cfg.get("gate") == "off"
+def gate_disabled(cfg: dict, sd=None, session: str = "") -> bool:
+    """Off by env, by config, or for one session by `off-<session>.json` holding {"off": true} (the khoros-view mod)."""
+    if os.environ.get("KHOROS_GATE", "").strip().lower() == "off" or cfg.get("gate") == "off":
+        return True
+    return sd is not None and load_state(state_path(sd, "off", session)).get("off") is True
+
+
+def record_run(sd: Path, session: str, outcome: str, **fields) -> None:
+    """Append one Stop outcome to `runs-<session>.json` for viewers (the khoros-view mod); never fails the gate."""
+    path = state_path(sd, "runs", session)
+    runs = load_state(path).get("runs") or []
+    runs.append({"at": time.time(), "outcome": outcome, **fields})
+    save_state(path, {"runs": runs[-RUNS_KEPT:]})
+
+
+def run_summary(report: dict, new: dict, pre: dict, files: list, started: float) -> dict:
+    """What a viewer needs from one verification: the checks, the tests and which failures were new."""
+    tests = report.get("tests") or {}
+    return {
+        "files": len(files),
+        "seconds": round(time.monotonic() - started, 1),
+        "violations": [
+            {k: v.get(k) for k in ("rule", "file", "line", "message")} for v in report.get("violations", [])
+        ][:10],
+        "tests": [{"command": r.get("command"), "status": r.get("status")} for r in tests.get("runs") or []],
+        "new": sorted(new),
+        "preexisting": sorted(pre),
+    }
 
 
 def is_code_path(path: str) -> bool:
@@ -300,6 +327,8 @@ def cmd_stop(payload: dict) -> int:
         return 0
 
     session = str(payload.get("session_id") or "default")
+    if gate_disabled(cfg, sd, session):
+        return 0
     files = session_changed_files(root, load_state(state_path(sd, "session", session)),
                                   load_state(state_path(sd, "edits", session)))
     if not files:
@@ -318,6 +347,7 @@ def cmd_stop(payload: dict) -> int:
     tree_now = now["tree"] if now else ""
     if tree_now and gstate.get("tree") == tree_now and not gstate.get("gave_up"):
         save_state(gpath, {**gstate, "gave_up": True})
+        record_run(sd, session, "stall", attempt=int(gstate.get("blocks", 0)), max=max_blocks, files=len(files))
         return allow("khoros gate: no changes since the last failed verification; releasing the stop. "
                      "Tell the user verification is still failing and why.")
 
@@ -362,17 +392,24 @@ def cmd_stop(payload: dict) -> int:
         notes.append(f"khoros gate: tests exceeded their time budget (verify.test_timeout {cfg['test_timeout']}s, "
                      f"gate budget {cfg['gate_budget']}s). Tell the user verification timed out.")
 
+    summary = run_summary(report, new, pre, files, started)
+    if report.get("timed_out"):
+        summary["timed_out"] = True
+
     if not blocking:
         drop_state(gpath)
+        record_run(sd, session, "pass", **summary)
         return allow(*notes)
 
     sig = failure_signature(static_errs, new)
     if gstate.get("gave_up") and gstate.get("signature") == sig:
+        record_run(sd, session, "given_up", **summary)
         return 0  # already gave up on exactly this failure: stay given up
     blocks = 0 if gstate.get("signature") != sig and gstate.get("gave_up") else int(gstate.get("blocks", 0))
 
     if blocks >= max_blocks:
         save_state(gpath, {"blocks": blocks, "gave_up": True, "signature": sig, "tree": tree_now})
+        record_run(sd, session, "gave_up", attempt=blocks, max=max_blocks, **summary)
         return allow(
             f"khoros gate gave up after {max_blocks} attempts; tell the user verification is failing.",
             clamp_lines(format_report(report, tail_lines=20), 25),
@@ -382,6 +419,7 @@ def cmd_stop(payload: dict) -> int:
     if not save_state(gpath, {"blocks": blocks + 1, "gave_up": False, "signature": sig, "tree": tree_now}):
         # the counter cannot advance, so blocking could repeat forever: fail open
         return allow("khoros gate: cannot persist its retry counter; allowing stop without blocking.", *notes)
+    record_run(sd, session, "block", attempt=blocks + 1, max=max_blocks, **summary)
 
     head = (
         f"khoros gate: verification failed (attempt {blocks + 1}/{max_blocks}). "
@@ -447,6 +485,8 @@ def cmd_post_edit(payload: dict) -> int:
     # record the edit (Stop falls back to these when there is no SessionStart baseline) and detect edit loops
     session = str(payload.get("session_id") or "default")
     sd = state_dir(root)
+    if gate_disabled(cfg, sd, session):
+        return 0
     if sd is not None:
         spath = state_path(sd, "edits", session)
         state = load_state(spath)

@@ -50,7 +50,8 @@ def validate_arms(task: Task, scratch: Path) -> List[str]:
         has_md, has_harness = (ws / "CLAUDE.md").exists(), (ws / ".harness").exists()
         if has_md != arm.claude_md or has_harness != arm.harness:
             problems.append(f"{arm.name}: CLAUDE.md={has_md} .harness={has_harness} does not match arm definition")
-        if ("--plugin-dir" in info["extra_args"]) != arm.plugin:
+        plugin_dirs = [d for flag, d in zip(info["extra_args"], info["extra_args"][1:]) if flag == "--plugin-dir"]
+        if any(d.endswith("/plugin") for d in plugin_dirs) != arm.plugin or any(d.endswith("khoros-view") for d in plugin_dirs) != arm.view:
             problems.append(f"{arm.name}: plugin flag mismatch")
         if arm.harness:
             res = subprocess.run([str(ws / "bin" / "khoros"), "verify"], cwd=ws, capture_output=True, text=True)

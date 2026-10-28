@@ -38,6 +38,11 @@ command). It is not proof of correctness.
 - **Blackboard task DAG** (SQLite): the state store behind that skill.
 - **`khoros-reviewer` agent**: read-only reviewer that sees a diff and the request without the author's
   reasoning. Invoke it when you want a second look.
+- **`khoros-view` mod** (`mods/khoros-view/`): a status line and a `/khoros` pane showing gate results, token use
+  and cost (Claude Code's list-price estimate) and the task board, with buttons to run verify, re-run the failing
+  check and turn the gate off for the session. It also gives Claude a read-only status tool, loaded on every turn;
+  the `khoros-view` bench arm measures its cost (H6). Load it with
+  `claude --plugin-dir plugin --plugin-dir mods/khoros-view`. See [its README](mods/khoros-view/README.md).
 
 ## What is experimental
 
