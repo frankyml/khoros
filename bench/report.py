@@ -28,7 +28,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from benchlib import parse_stream  # noqa: E402
 
 Record = Dict[str, Any]
-ADOPTION_FEATURES = ("triage", "spec", "task", "claim", "submit", "approve", "brief", "verify", "pdh_subagent", "harness_skill")
+ADOPTION_FEATURES = (
+    "triage", "spec", "task", "claim", "submit", "approve", "brief", "verify", "pdh_subagent", "harness_skill",
+    "status_tool",
+)
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> Tuple[float, float]:
@@ -205,7 +208,7 @@ def adopted(r: Record, feature: str) -> bool:
     """Feature use for one run; older records without an `adoption` field are derived from raw counters."""
     if "adoption" in r:
         return bool(r["adoption"].get(feature))
-    if feature == "pdh_subagent":
+    if feature in ("pdh_subagent", "status_tool"):
         return False
     if feature == "harness_skill":
         return r.get("skill_calls", 0) > 0

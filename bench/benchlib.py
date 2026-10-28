@@ -63,6 +63,7 @@ class Arm:
     claude_md: bool = False  # copy Khoros CLAUDE.md into the workspace
     harness: bool = False  # `khoros init` + bin/khoros on PATH
     plugin: bool = False  # --plugin-dir <khoros>/plugin (v4: verify gate hooks, khoros-reviewer agent, long-task skill)
+    view: bool = False  # --plugin-dir <khoros>/mods/khoros-view (its always-loaded status tool reaches the model)
     preamble: str = ""  # prepended to the task prompt; only the factory arm uses it
     claude_md_source: str = ""  # CLAUDE.md to install instead of Khoros's (path relative to bench/)
 
@@ -81,10 +82,16 @@ ARMS: Dict[str, Arm] = {
     "placebo": Arm("placebo", claude_md=True, claude_md_source="placebo/CLAUDE.md"),
     # Same install as `khoros`, but the prompt asks for the full workflow, so the factory itself is tested
     "khoros-factory": Arm("khoros-factory", claude_md=True, harness=True, plugin=True, preamble=FACTORY_PREAMBLE),
+    # khoros plus the khoros-view mod: tests whether its always-loaded status tool pays for its context
+    "khoros-view": Arm("khoros-view", claude_md=True, harness=True, plugin=True, view=True),
 }
 
 # Khoros features whose use is tracked per run (see parse_stream)
-ADOPTION_FEATURES = ("triage", "spec", "task", "claim", "submit", "approve", "brief", "verify", "pdh_subagent", "harness_skill")
+ADOPTION_FEATURES = (
+    "triage", "spec", "task", "claim", "submit", "approve", "brief", "verify", "pdh_subagent", "harness_skill",
+    "status_tool",
+)
+VIEW_TOOL = "mcp__khoros-view__status"
 
 
 @dataclass(frozen=True)
@@ -192,6 +199,8 @@ def build_workspace(task: Task, arm: Arm, ws: Path, khoros_root: Path = REPO_ROO
         env["PATH"] = f"{ws / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}"
     if arm.plugin:
         extra_args += ["--plugin-dir", str(khoros_root / "plugin")]
+    if arm.view:
+        extra_args += ["--plugin-dir", str(khoros_root / "mods" / "khoros-view")]
 
     _git(ws, "init", "-q")
     (ws / ".git" / "info").mkdir(parents=True, exist_ok=True)
@@ -409,6 +418,7 @@ def parse_stream(lines: Iterable[str]) -> Dict[str, Any]:
             # v3.1 personas (pdh-*) and the v4 reviewer share one column so versions stay comparable
             "pdh_subagent": any("pdh-" in kind or "khoros-reviewer" in kind for kind in subagent_types),
             "harness_skill": any("development-harness" in s or "long-task" in s for s in skills),
+            "status_tool": tools.get(VIEW_TOOL, 0) > 0,
         },
         "init": init,
         "has_result": result is not None,

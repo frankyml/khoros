@@ -1,0 +1,6 @@
+{
+  "name": "khoros-view",
+  "version": "0.1.0",
+  "description": "Shows the Khoros verification gate, token use and cost, and the task board in a status line and a /khoros pane",
+  "types": "./types/index.d.ts"
+}

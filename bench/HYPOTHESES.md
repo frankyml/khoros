@@ -14,6 +14,7 @@ understanding, not for claiming an effect.
 | `khoros` | Khoros installed (CLAUDE.md, `.harness/` + `bin/khoros`, plugin); the agent decides how to use it |
 | `khoros-factory` | as `khoros`, plus a prompt preamble asking for the full workflow (triage, spec, blackboard tasks, verify) |
 | `khoros-noplugin`, `khoros-cli-only` | ablations, used to attribute an effect once one is found |
+| `khoros-view` | as `khoros`, plus the `khoros-view` mod, whose status tool is loaded on every turn |
 
 All arms get the same task prompt and the same neutral suffix (prompt version 2). Every comparison is
 paired by task against `vanilla`, with the same model, CLI version and Khoros commit.
@@ -124,3 +125,12 @@ every arm, so they detect harm (and measure cost) but cannot detect help. They r
   session changed (baseline recorded by a SessionStart hook), blocks only on failures that are new versus the
   session's starting tree, keeps its state under the git dir, and no longer hooks SubagentStop. Amendment 1's
   definitions are unchanged.
+- 2026-10-28 (khoros-view mod, before any `khoros-view` agent run): the `khoros-view` mod (`mods/khoros-view/`)
+  adds a status line and a `/khoros` pane, which `claude -p` does not draw, and one tool,
+  `mcp__khoros-view__status`, which is loaded on every turn (not deferred) by the user's choice. Only the tool can
+  reach the model.
+  1. **New hypothesis H6:** the always-loaded status tool does not raise cost: the `khoros-view` vs `khoros` cost
+     ratio has a 95% CI upper bound < 1.05. Secondary: Δ hidden-test pass share vs `khoros` (reported, not claimed)
+     and the share of runs that call the tool (adoption column `status_tool`).
+  2. If H6 fails, or `status_tool` adoption is under 10% with no pass-share gain, the tool is made deferred (or
+     removed) and the arm is re-run.

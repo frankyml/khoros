@@ -73,6 +73,7 @@ def run_one(args, task: Task, arm: Arm, rep: int, out_dir: Path, work_root: Path
     cmd = claude_command(args, task, arm, info["extra_args"])
     env = dict(os.environ, **info["env"])
     env.pop("CLAUDECODE", None)  # don't let the child think it is nested in this session
+    env.pop("CLAUDE_CODE_PLUGIN_DIRS", None)  # plugins come only from the arm's --plugin-dir flags
     transcript = out_dir / "transcripts" / f"{key}.jsonl"
     if args.dry_run:
         record.update(status="dry_run", success=False, command=cmd[:2] + ["<prompt>"] + cmd[3:], prompt=cmd[2])

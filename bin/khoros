@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Khoros (PDH v3.1) - Self-Improving Agentic Software Factory & Microkernel CLI
+Khoros v4 - verification gate, task board and tooling for Claude Code
 Controls Player-Coach triage, multi-archetype specs (PRD/RFC/RCA/Brief), DAG task lifecycle,
 Subagent Task Contracts, universal verification gates, autonomous capabilities, and telemetry.
 """
@@ -98,6 +98,11 @@ def cmd_status(args):
     gov = TokenGovernor()
     bb.recover_expired_leases()
     tasks = bb.list_tasks()
+    if getattr(args, "json", False):
+        keys = ("id", "task_type", "title", "status", "owner", "fencing_token")
+        rows = [{**{k: t.get(k) for k in keys}, "deps": bb.get_task_dependencies(t["id"])} for t in tasks]
+        print(json.dumps({"tasks": rows}))
+        return
     active_profile = detect_project_profile()
 
     try:
@@ -106,7 +111,7 @@ def cmd_status(args):
     except Exception:
         host_str = "Auto"
 
-    print(f"\n=== Khoros v3.1 Status [{Path.cwd().name} | Profile: {active_profile} | Host: {host_str}] ===\n")
+    print(f"\n=== Khoros v4 Status [{Path.cwd().name} | Profile: {active_profile} | Host: {host_str}] ===\n")
     if not tasks:
         print("No tasks registered in blackboard. Create one with: khoros task create <id> <title>")
     else:
@@ -125,7 +130,7 @@ def cmd_status(args):
 def cmd_host(args):
     from kernel.host import get_host_environment
     env = get_host_environment()
-    print("\n=== Khoros v3.1 Host & Environment Auto-Adaptation ===")
+    print("\n=== Khoros v4 Host & Environment Auto-Adaptation ===")
     print(f"OS Platform:          {env['os']} ({env['machine']})")
     print(f"Hardware Memory:      {env['memory_gb']:.1f} GB Unified/System Memory")
     print(f"CPU Cores:            {env['cpu_cores']} logical cores")
@@ -683,7 +688,7 @@ def cmd_init(args):
 def main():
     parser = argparse.ArgumentParser(
         prog="khoros",
-        description="Khoros (PDH v3.1) - Self-Improving Agentic Software Factory & Microkernel CLI",
+        description="Khoros v4 - verification gate, task board and tooling for Claude Code",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -692,7 +697,8 @@ def main():
     init_p.add_argument("--profile", help="Optional domain profile (generic, python, mobile-kmp, web, research)", default=None)
 
     # status
-    subparsers.add_parser("status", help="Show current blackboard tasks, dependencies, and telemetry")
+    status_p = subparsers.add_parser("status", help="Show current blackboard tasks, dependencies, and telemetry")
+    status_p.add_argument("--json", action="store_true", help="Machine-readable task list")
 
     # monitor
     subparsers.add_parser("monitor", help="Display rich live terminal system and token monitor")

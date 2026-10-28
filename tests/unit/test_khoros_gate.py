@@ -36,6 +36,7 @@ class GateBase(unittest.TestCase):
         self.git("config", "user.email", "t@t")
         self.git("config", "user.name", "t")
         self.write("README.md", "# t\n")
+        self.write(".harness/config.yaml", "version: 4.0\n")  # the gate acts only in Khoros repos
         self.git("add", "-A")
         self.git("commit", "-qm", "init")
 
@@ -413,6 +414,83 @@ class TestGateFailSafe(GateBase):
         self.assertEqual(out["decision"], "block")
         self.assertIn("test_from_venv", out["reason"])
         self.assertIn(".venv/bin/python -m unittest", out["reason"])
+
+
+class TestGateScope(GateBase):
+    def test_repo_without_khoros_config_is_left_alone(self):
+        (self.ws / ".harness" / "config.yaml").unlink()
+        self.commit_all("remove khoros")
+        self.start()
+        self.write("tests/test_x.py", FAILING)
+        self.assertEqual(self.stop()[1], {})
+        self.assertFalse(self.khoros_dir().exists())
+        proc = self.gate("post-edit", {"tool_input": {"file_path": str(self.write("bad.py", "def f(:\n"))}})
+        self.assertEqual((proc.returncode, proc.stderr), (0, ""))
+
+
+class TestGateViewerState(GateBase):
+    """What the khoros-view mod reads (runs-<session>.json) and writes (off-<session>.json)."""
+
+    def runs(self, session="s1"):
+        path = self.khoros_dir() / f"runs-{session}.json"
+        return json.loads(path.read_text())["runs"] if path.exists() else []
+
+    def test_block_then_pass_are_recorded_with_their_tests(self):
+        self.start()
+        self.write("tests/test_x.py", FAILING)
+        self.assertEqual(self.stop()[1]["decision"], "block")
+        self.write("tests/test_x.py", PASSING)
+        self.assertEqual(self.stop({"stop_hook_active": True})[1], {})
+        block, ok = self.runs()
+        self.assertEqual((block["outcome"], block["attempt"], block["max"]), ("block", 1, 3))
+        self.assertTrue(block["new"])
+        self.assertIn("failed", [t["status"] for t in block["tests"]])
+        self.assertEqual(ok["outcome"], "pass")
+        self.assertEqual({t["status"] for t in ok["tests"]}, {"passed"})
+        self.assertLessEqual(block["at"], ok["at"])
+
+    def test_preexisting_failures_are_recorded(self):
+        self.write("app.py", APP_RED)
+        self.write("tests/test_app.py", APP_TEST)
+        self.commit_all()
+        self.start()
+        self.write("notes.py", "x = 1\n")  # unrelated change: the red test pre-dates the session
+        self.stop()
+        (run,) = self.runs()
+        self.assertEqual(run["outcome"], "pass")
+        self.assertTrue(run["preexisting"])
+
+    def test_stall_is_recorded(self):
+        self.start()
+        self.write("tests/test_x.py", FAILING)
+        self.stop()
+        self.stop({"stop_hook_active": True})
+        self.assertEqual([r["outcome"] for r in self.runs()], ["block", "stall"])
+
+    def test_run_log_is_capped(self):
+        self.start()
+        self.write("tests/test_x.py", PASSING)
+        self.khoros_dir().mkdir(parents=True, exist_ok=True)
+        old = [{"at": i, "outcome": "pass"} for i in range(60)]
+        (self.khoros_dir() / "runs-s1.json").write_text(json.dumps({"runs": old}))
+        self.stop()
+        runs = self.runs()
+        self.assertEqual(len(runs), 50)
+        self.assertEqual(runs[0]["at"], 11)
+
+    def test_session_off_flag_disables_stop_and_post_edit_for_that_session_only(self):
+        self.start()
+        self.start({"session_id": "s2"})
+        self.write("tests/test_x.py", FAILING)
+        flag = self.khoros_dir() / "off-s1.json"
+        flag.write_text('{"off": true}')
+        self.assertEqual(self.stop()[1], {})
+        self.assertEqual(self.runs(), [])
+        proc = self.gate("post-edit", {"tool_input": {"file_path": str(self.write("bad.py", "def f(:\n"))}})
+        self.assertEqual(proc.returncode, 0)
+        self.assertEqual(self.stop({"session_id": "s2"})[1]["decision"], "block")
+        flag.write_text('{"off": false}')  # the mod turns the gate back on by rewriting the flag
+        self.assertEqual(self.stop()[1]["decision"], "block")
 
 
 class TestGatePostEdit(GateBase):
