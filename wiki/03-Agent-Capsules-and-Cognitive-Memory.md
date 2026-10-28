@@ -1,5 +1,7 @@
 # Chapter 03: Agent Capsules & Cognitive Memory
 
+> **Status: experimental, not wired into the runtime.** The loader and compactor are exercised only by tests, and no `capsule.yaml` exists in the repository. Domain rules do not live in capsules today. The context percentages and compaction ratios below are design targets, not measurements.** See [`.harness/EXPERIMENTAL.md`](../.harness/EXPERIMENTAL.md) and the [v4 RFC](../docs/rfc/khoros-v4.md).
+
 In **Khoros**, agents are not defined by monolithic, open-ended system prompt files. Instead, domain intelligence, toolkits, constraints, and memory are packaged into **Agent Capsules** (`capsule.yaml`).
 
 ```

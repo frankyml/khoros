@@ -1,0 +1,23 @@
+.badge {
+  display: inline-block;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+}
+
+.badge--new {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  padding: var(--space-1) var(--space-2);
+}
+
+.badge--low-stock {
+  background: var(--color-warning);
+  color: var(--color-on-warning);
+  padding: var(--space-1) var(--space-2);
+}
+
+.badge--sale {
+  background: var(--color-error);
+  color: var(--color-on-error);
+  padding: var(--space-1) var(--space-2);
+}

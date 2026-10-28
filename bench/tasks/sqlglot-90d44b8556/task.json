@@ -1,0 +1,50 @@
+{
+  "title": "feat(trino): preserve Spark CONCAT_WS array semantics (#8391)",
+  "tier": "T2",
+  "type": "feature",
+  "suite": "repo-features",
+  "kind": "repo",
+  "repo": "sqlglot",
+  "base": "5a376abf51ad3804f20f7763b69e5a8400ca0d19",
+  "commit": "90d44b8556a19ddf8d4d43395a39f589a42ab748",
+  "f2p": [
+    "tests.dialects.test_trino.TestTrino.test_concat_ws",
+    "tests.dialects.test_trino.TestTrino.test_concat_ws_typed",
+    "tests.dialects.test_trino.TestTrino.test_concat_ws_unknown_types"
+  ],
+  "p2p": [
+    "tests.dialects.test_trino.TestTrino.test_analyze",
+    "tests.dialects.test_trino.TestTrino.test_array_first",
+    "tests.dialects.test_trino.TestTrino.test_ddl",
+    "tests.dialects.test_trino.TestTrino.test_inline_udf",
+    "tests.dialects.test_trino.TestTrino.test_inline_udf_begin_end",
+    "tests.dialects.test_trino.TestTrino.test_inline_udf_case",
+    "tests.dialects.test_trino.TestTrino.test_inline_udf_if",
+    "tests.dialects.test_trino.TestTrino.test_inline_udf_loop_repeat",
+    "tests.dialects.test_trino.TestTrino.test_inline_udf_while",
+    "tests.dialects.test_trino.TestTrino.test_json_value",
+    "tests.dialects.test_trino.TestTrino.test_listagg",
+    "tests.dialects.test_trino.TestTrino.test_trim",
+    "tests.dialects.test_trino.TestTrino.test_trino"
+  ],
+  "files_changed": [
+    "sqlglot/expressions/string.py",
+    "sqlglot/generators/trino.py",
+    "sqlglot/parsers/hive.py",
+    "tests/dialects/test_trino.py"
+  ],
+  "added_lines": 40,
+  "prompt_variant": "full",
+  "khoros_tier_with_files": "T2_ORCHESTRATED",
+  "khoros_tier_prompt_only": "T1_SCOPED",
+  "f2p_assertions": {
+    "tests.dialects.test_trino.TestTrino.test_concat_ws": 11,
+    "tests.dialects.test_trino.TestTrino.test_concat_ws_typed": 3,
+    "tests.dialects.test_trino.TestTrino.test_concat_ws_unknown_types": 12
+  },
+  "f2p_assertions_passing_before": {
+    "tests.dialects.test_trino.TestTrino.test_concat_ws": 3,
+    "tests.dialects.test_trino.TestTrino.test_concat_ws_typed": 0,
+    "tests.dialects.test_trino.TestTrino.test_concat_ws_unknown_types": 4
+  }
+}

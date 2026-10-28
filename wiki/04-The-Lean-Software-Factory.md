@@ -1,5 +1,7 @@
 # Chapter 04: The Lean Software Factory
 
+> **Status: partly aspirational.** The factory stations, write-time Poka-Yoke jigs and the three-tier Andon cord are a design; none is hooked to an agent's writes. What actually runs in v4 is the Stop-hook gate and per-edit checks (chapter 09). The station timings below are illustrative, not measured.** See [`.harness/EXPERIMENTAL.md`](../.harness/EXPERIMENTAL.md) and the [v4 RFC](../docs/rfc/khoros-v4.md).
+
 **Khoros** adapts the principles of the **Toyota Production System (TPS)** and modern Lean Manufacturing to multi-agent software engineering.
 
 ```

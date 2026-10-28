@@ -1,0 +1,13 @@
+/* Design tokens. Every colour and spacing value in the UI comes from here. */
+:root {
+  --color-primary: #00629E;
+  --color-on-primary: #FFFFFF;
+  --color-warning: #7D5700;
+  --color-on-warning: #FFFFFF;
+  --color-error: #BA1A1A;
+  --color-on-error: #FFFFFF;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --radius-pill: 999px;
+}

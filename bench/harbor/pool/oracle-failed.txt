@@ -1,0 +1,6 @@
+build-cython-ext
+build-pmars
+build-pov-ray
+compile-compcert
+gcode-to-text
+make-doom-for-mips

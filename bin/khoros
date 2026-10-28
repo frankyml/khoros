@@ -27,7 +27,7 @@ from dispatcher import LeadRouter, TaskDispatcher
 from governor import PriorityTier, TokenGovernor
 from linter import DesignTokenLinter
 from prd_engine import PRDEngine
-from verifier import VerificationPipeline, detect_project_profile
+from verifier import VerificationPipeline, detect_project_profile, format_report
 
 
 def format_table(headers, rows):
@@ -74,21 +74,15 @@ def run_lint_targets(targets: List[Path]) -> int:
         return 1
 
 
-def run_verification_gate(targets: List[Path] = None, profile: str = None, run_tests: bool = False) -> int:
+def run_verification_gate(targets: List[Path] = None, profile: str = None, run_tests: bool = True,
+                          changed: bool = False, fast: bool = False, as_json: bool = False) -> int:
     pipeline = VerificationPipeline(profile=profile)
-    ok, report = pipeline.run(targets=targets, run_tests=run_tests)
-    checks_str = ", ".join(report["checks_run"])
-    if ok:
-        print(f"✓ Universal Verification Gate passed [Profile: {report['profile']} | Checks: {checks_str}].")
-        return 0
+    ok, report = pipeline.run(targets=targets, run_tests=run_tests, changed=changed, fast=fast)
+    if as_json:
+        print(json.dumps(report, indent=2))
     else:
-        print(
-            f"✗ Verification Gate failed with {report['violation_count']} issue(s) "
-            f"[Profile: {report['profile']} | Checks: {checks_str}]:\n"
-        )
-        for v in report["violations"]:
-            print(f"  {v.get('file', '?')}:{v.get('line', 0)} [{v.get('severity', 'ERROR')}] {v.get('rule')}: {v.get('message')}")
-        return 1
+        print(format_report(report))
+    return 0 if ok else 1
 
 
 def _resolve_task_id(args) -> str:
@@ -125,10 +119,7 @@ def cmd_status(args):
             rows.append([t["id"], ttype, t["title"][:32], t["status"], t["owner"] or "-", deps_str, t["fencing_token"]])
         print(format_table(headers, rows))
 
-    telemetry = gov.get_telemetry()
-    print("\n--- Token Economy & Governor Telemetry ---")
-    print(f"RPM: {telemetry['current_rpm']} / {telemetry['rpm_limit']} | TPM: {telemetry['current_tpm']} / {telemetry['tpm_limit']}")
-    print(f"Cache Hit Rate: {telemetry['cache_hit_rate_percent']}% | Total Input: {telemetry['total_input_tokens']} | Cached: {telemetry['total_cached_tokens']}\n")
+    print("\nToken usage / cache hit rate: not measured (Khoros does not see API traffic).\n")
 
 
 def cmd_host(args):
@@ -177,7 +168,6 @@ def cmd_task_create(args):
         payload["spec_path"] = args.spec
 
     bb.create_task(args.id, args.title, payload=payload, task_type=args.type, depends_on=deps)
-    gov.record_usage(PriorityTier.Q1_REASONING, input_tokens=18000, cached_tokens=16384, output_tokens=1024)
     dep_msg = f" (depends_on: {', '.join(deps)})" if deps else ""
     print(f"Task '{args.id}' [{args.type}] successfully created in blackboard{dep_msg}.")
 
@@ -237,7 +227,6 @@ def cmd_submit(args):
     summary = getattr(args, "summary", None) or "Implementation completed and verified"
     ok = bb.complete_task(tid, fencing_token=args.token, result={"summary": summary})
     if ok:
-        gov.record_usage(PriorityTier.Q2_CODING, input_tokens=36000, cached_tokens=32768, output_tokens=2048)
         print(f"Task '{tid}' submitted for review (status: REVIEW_REQUESTED).")
     else:
         print(f"Error: Could not transition '{tid}' to REVIEW_REQUESTED.", file=sys.stderr)
@@ -280,7 +269,6 @@ def cmd_approve(args):
             "UPDATE tasks SET status = 'COMPLETED', updated_at = ? WHERE id = ?;",
             (time.time(), tid),
         )
-    gov.record_usage(PriorityTier.Q0_CRITICAL, input_tokens=24000, cached_tokens=22000, output_tokens=1024)
     bb.publish_event(
         trace_id=tid,
         sender="reviewer_gate",
@@ -365,7 +353,6 @@ def cmd_prd(args):
     engine = PRDEngine()
     gov = TokenGovernor()
     path = engine.create_prd(args.slug, args.title, args.problem, profile=getattr(args, "profile", None))
-    gov.record_usage(PriorityTier.Q1_REASONING, input_tokens=36000, cached_tokens=32768, output_tokens=4096)
     print(f"✓ PRD generated with Mermaid state machines and project personas at: {path}")
 
 
@@ -379,7 +366,6 @@ def cmd_spec(args):
         args.problem,
         profile=getattr(args, "profile", None),
     )
-    gov.record_usage(PriorityTier.Q1_REASONING, input_tokens=36000, cached_tokens=32768, output_tokens=4096)
     print(f"✓ Specification [{args.spec_type.upper()}] generated at: {path}")
 
 
@@ -394,7 +380,14 @@ def cmd_lint(args):
 def cmd_verify(args):
     raw_targets = args.targets if args.targets else []
     targets = [Path(t) for t in raw_targets] if raw_targets else None
-    rc = run_verification_gate(targets=targets, profile=args.profile, run_tests=args.with_tests)
+    rc = run_verification_gate(
+        targets=targets,
+        profile=args.profile,
+        run_tests=not (args.no_tests or args.fast),
+        changed=args.changed,
+        fast=args.fast,
+        as_json=args.json,
+    )
     if rc != 0:
         sys.exit(rc)
 
@@ -461,9 +454,7 @@ def cmd_monitor(args):
             ])
         print(format_table(headers, rows))
 
-    print("\n[TOKEN ECONOMY & GOVERNOR]")
-    print(f"  RPM: {telemetry['current_rpm']}/{telemetry['rpm_limit']}  |  TPM: {telemetry['current_tpm']}/{telemetry['tpm_limit']}")
-    print(f"  Cache Hit Rate: {telemetry['cache_hit_rate_percent']}%  |  Input: {telemetry['total_input_tokens']}  |  Cached: {telemetry['total_cached_tokens']}")
+    print("\n[TOKEN USAGE]\n  not measured (Khoros does not see API traffic)")
 
     print("\n[LATEST AUDIT EVENTS]")
     if not events:
@@ -615,7 +606,9 @@ def bootstrap_workspace_harness(target_dir: Path = None, explicit_profile: str =
     target_harness = target_dir / ".harness"
     target_harness.mkdir(parents=True, exist_ok=True)
 
-    subprocess.run(["chattr", "+C", str(target_harness)], capture_output=True)
+    # Btrfs no-CoW attribute; chattr only exists on Linux
+    if shutil.which("chattr"):
+        subprocess.run(["chattr", "+C", str(target_harness)], capture_output=True)
 
     # Copy project-specific config & token files if not already present
     detected_prof = explicit_profile or detect_project_profile(target_dir)
@@ -814,10 +807,14 @@ def main():
     lint_parser.add_argument("targets", nargs="*", help="Files or directories to lint")
 
     # verify
-    verify_parser = subparsers.add_parser("verify", help="Run universal multi-profile verification gate")
+    verify_parser = subparsers.add_parser("verify", help="Verify the project: static checks plus its tests")
     verify_parser.add_argument("targets", nargs="*", help="Optional files or directories to verify")
     verify_parser.add_argument("--profile", default=None, help="Override project profile")
-    verify_parser.add_argument("--with-tests", action="store_true", help="Also execute automated unit test suite")
+    verify_parser.add_argument("--no-tests", action="store_true", help="Skip the project's test suite")
+    verify_parser.add_argument("--with-tests", action="store_true", help="Run the test suite (default; accepted for compatibility)")
+    verify_parser.add_argument("--changed", action="store_true", help="Scope static checks to files changed vs git HEAD (incl. untracked)")
+    verify_parser.add_argument("--fast", action="store_true", help="Static checks only, no tests (for per-edit use)")
+    verify_parser.add_argument("--json", action="store_true", help="Machine-readable output")
 
     # dispatch
     dispatch_parser = subparsers.add_parser("dispatch", help="Dispatch pending tasks (respecting DAG barriers & concurrency cap)")

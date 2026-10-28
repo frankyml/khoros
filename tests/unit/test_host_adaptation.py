@@ -8,6 +8,7 @@ Unit tests for Khoros v3.1 Host & Environment Auto-Adaptation:
 """
 
 import os
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -50,8 +51,15 @@ class TestHostEnvironmentAdaptation(unittest.TestCase):
             self.assertEqual(env["sandbox_mode"], "posix_seatbelt")
 
     def test_sandbox_darwin_safety_hook(self):
-        # Verify that _set_resource_limits does not crash
-        WorktreeSandbox._set_resource_limits()
+        # Verify that _set_resource_limits does not crash. Run it in a child process, as the sandbox does
+        # (preexec_fn): called in-process it caps the whole test runner at 5 CPU-seconds and kills later tests.
+        harness_dir = Path(__file__).resolve().parent.parent.parent / ".harness"
+        code = (
+            "import sys; sys.path.insert(0, sys.argv[1]); "
+            "from kernel.sandbox import WorktreeSandbox; WorktreeSandbox._set_resource_limits()"
+        )
+        res = subprocess.run([sys.executable, "-c", code, str(harness_dir)], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
 
 
 if __name__ == "__main__":

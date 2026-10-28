@@ -1,0 +1,44 @@
+{
+  "title": "feat(doris): parse full-text search operators [CLAUDE] (#8585)",
+  "tier": "T2",
+  "type": "feature",
+  "suite": "repo-features",
+  "kind": "repo",
+  "repo": "sqlglot",
+  "base": "ffb9721df98984c62817701ec8cd895cb3b1ee82",
+  "commit": "f3a6eb95e424ef03bf20fca05a0431a666946e90",
+  "f2p": [
+    "tests.dialects.test_doris.TestDoris.test_match"
+  ],
+  "p2p": [
+    "tests.dialects.test_doris.TestDoris.test_analyze",
+    "tests.dialects.test_doris.TestDoris.test_date_add_sub",
+    "tests.dialects.test_doris.TestDoris.test_distributed",
+    "tests.dialects.test_doris.TestDoris.test_doris",
+    "tests.dialects.test_doris.TestDoris.test_identity",
+    "tests.dialects.test_doris.TestDoris.test_key",
+    "tests.dialects.test_doris.TestDoris.test_materialized_view_properties",
+    "tests.dialects.test_doris.TestDoris.test_partition",
+    "tests.dialects.test_doris.TestDoris.test_regex",
+    "tests.dialects.test_doris.TestDoris.test_rename_table",
+    "tests.dialects.test_doris.TestDoris.test_table_alias_conversion",
+    "tests.dialects.test_doris.TestDoris.test_time"
+  ],
+  "files_changed": [
+    "sqlglot/expressions/core.py",
+    "sqlglot/generator.py",
+    "sqlglot/generators/doris.py",
+    "sqlglot/parsers/doris.py",
+    "tests/dialects/test_doris.py"
+  ],
+  "added_lines": 55,
+  "prompt_variant": "terse",
+  "khoros_tier_with_files": "T2_ORCHESTRATED",
+  "khoros_tier_prompt_only": "T2_ORCHESTRATED",
+  "f2p_assertions": {
+    "tests.dialects.test_doris.TestDoris.test_match": 26
+  },
+  "f2p_assertions_passing_before": {
+    "tests.dialects.test_doris.TestDoris.test_match": 3
+  }
+}

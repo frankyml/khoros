@@ -1,0 +1,5 @@
+{
+  "name": "khoros",
+  "version": "4.0.0",
+  "description": "Verification gate (Stop and post-edit hooks that run tests and static checks), a durable task board for long-running work (long-task skill), and a read-only fresh-context reviewer agent."
+}

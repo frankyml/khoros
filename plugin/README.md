@@ -1,14 +1,14 @@
-# Personal Development Harness (PDH v2.0) — Global Antigravity Plugin
+# Khoros plugin (Claude Code)
 
-Provides the **Player-Coach Lead Orchestrator (`@lead`)** topology, SQLite WAL Blackboard DAG orchestration (`blackboard.db`), zero-telephone-game Subagent Task Contracts (`harness brief`), multi-archetype specifications (`prd`, `rfc`, `rca`, `brief`), and universal multi-profile verification gates (`harness verify`) across all projects (`Fluffi`, `Gainsmith`, `personal-development-harness`, and generic workspaces).
+- `.claude-plugin/plugin.json`: plugin manifest (name `khoros`, v4.0.0).
+- `hooks/hooks.json`: SessionStart, Stop and post-edit hooks that run `bin/khoros-gate` (verification gate).
+  The hook command is `${CLAUDE_PLUGIN_ROOT}/../bin/khoros-gate`, so the plugin must be loaded in place from a
+  Khoros checkout (`claude --plugin-dir <checkout>/plugin`). A marketplace install copies only this directory;
+  the hook would fail to start and the gate would be silently inert.
+- The gate runs the repo's test and lint commands from the hook without a Claude Code permission prompt. Enable
+  the plugin only in repos you trust (or set `verify.gate: off` / `KHOROS_GATE=off`).
+- `skills/long-task/`: opt-in workflow for multi-session work using the task board.
+- `agents/khoros-reviewer.md`: read-only reviewer that checks a diff in fresh context.
+- `rules/AGENTS.md`: short always-on rules for hosts that read it.
 
-## Bundled Customizations
-- **Always-On Rule (`rules/AGENTS.md`)**: Configures the primary agent to operate as `@lead` with adaptive T0–T3 complexity routing.
-- **Skill (`skills/development-harness/SKILL.md`)**: Complete CLI runbook for `harness`, `frame-pacing-assert`, and `crash-sentinel`.
-- **Agents (`agents/*.md`)**:
-  - `pdh-lead`: Player-Coach Lead Orchestrator (Main Agent & Subagent)
-  - `pdh-explorer`: Read-only Context Harvester & Research Subagent
-  - `pdh-architect`: Systems, Clean/Hexagonal & STRIDE Architect Subagent
-  - `pdh-builder`: Contract-Driven Implementation Engineer Subagent
-  - `pdh-critic`: Independent Adversarial Verifier & QA Subagent
-- **Lifecycle Hook (`hooks.json`)**: Automatic lease expiration recovery on agent `Stop`.
+Antigravity uses `.agents/rules/harness-lead.md` and `.agents/hooks.json` instead.

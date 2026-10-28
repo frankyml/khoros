@@ -1,0 +1,39 @@
+{
+  "title": "feat(trino): parse routine characteristics for inline UDFs [CLAUDE] (#7981)",
+  "tier": "T2",
+  "type": "feature",
+  "suite": "repo-features",
+  "kind": "repo",
+  "repo": "sqlglot",
+  "base": "b4b6bb0aaaf89a307f4f3d1e36d2e534fe2b4c02",
+  "commit": "9815ccb32f1e5d17c31f4a1bdd868508b39f63dc",
+  "f2p": [
+    "tests.dialects.test_trino.TestTrino.test_inline_udf"
+  ],
+  "p2p": [
+    "tests.dialects.test_trino.TestTrino.test_analyze",
+    "tests.dialects.test_trino.TestTrino.test_array_first",
+    "tests.dialects.test_trino.TestTrino.test_ddl",
+    "tests.dialects.test_trino.TestTrino.test_json_value",
+    "tests.dialects.test_trino.TestTrino.test_listagg",
+    "tests.dialects.test_trino.TestTrino.test_trim",
+    "tests.dialects.test_trino.TestTrino.test_trino"
+  ],
+  "files_changed": [
+    "sqlglot/dialects/trino.py",
+    "sqlglot/expressions/query.py",
+    "sqlglot/generators/trino.py",
+    "sqlglot/parsers/trino.py",
+    "tests/dialects/test_trino.py"
+  ],
+  "added_lines": 56,
+  "prompt_variant": "full",
+  "khoros_tier_with_files": "T2_ORCHESTRATED",
+  "khoros_tier_prompt_only": "T1_SCOPED",
+  "f2p_assertions": {
+    "tests.dialects.test_trino.TestTrino.test_inline_udf": 18
+  },
+  "f2p_assertions_passing_before": {
+    "tests.dialects.test_trino.TestTrino.test_inline_udf": 13
+  }
+}

@@ -1,5 +1,7 @@
 # Chapter 08: Autonomous Capabilities & Library Hygiene
 
+> **Status: experimental, not wired into the runtime.** Capability synthesis, risk classification, canary scans, skill mining and generational GC are reachable only from manual CLI commands and tests. The cache-reuse percentages and context splits are design targets; nothing measures them, and the governor's telemetry in v3.1 used constants rather than observed usage.** See [`.harness/EXPERIMENTAL.md`](../.harness/EXPERIMENTAL.md) and the [v4 RFC](../docs/rfc/khoros-v4.md).
+
 Khoros v3.1 introduces an end-to-end evolutionary subsystem enabling autonomous capability synthesis, closed-loop skill refinement, and self-maintaining library hygiene. This ensures that agent skills and deterministic jigs continuously adapt and evolve from real-world execution traces while rigorously avoiding context bloat, security regressions, or library rot.
 
 ---
@@ -41,7 +43,7 @@ To prevent synthesizing one-off jigs for transient anomalies:
 
 ## 4. 4-Tier Cognitive Context Allocation & Dynamic Compaction
 
-To ensure predictable KV-cache prefix hits ($\ge 85\%$) and protect reasoning capacity, context windows are partitioned into strict deterministic tiers:
+Aiming for stable KV-cache prefix hits (a design target, not measured) and to protect reasoning capacity, context windows are partitioned into strict deterministic tiers:
 
 $$\mathcal{C}_{\text{total}} = \mathcal{P}_{\text{charter}} (15\%) + \mathcal{T}_{\text{tools}} (15\%) + \mathcal{M}_{\text{memory}} (15\%) + \mathcal{S}_{\text{scratchpad}} (35\%) + \mathcal{H}_{\text{headroom}} (20\%)$$
 

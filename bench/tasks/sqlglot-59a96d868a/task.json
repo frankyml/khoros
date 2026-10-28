@@ -1,0 +1,57 @@
+{
+  "title": "feat(starrocks): support REFRESH MATERIALIZED VIEW options [CLAUDE] (#8613)",
+  "tier": "T2",
+  "type": "feature",
+  "suite": "repo-features",
+  "kind": "repo",
+  "repo": "sqlglot",
+  "base": "0b0017821590b08497529d37387396adb6c3aa5b",
+  "commit": "59a96d868a6b8ed114ac3e216201106fea8bc351",
+  "f2p": [
+    "tests.dialects.test_starrocks.TestStarrocks.test_ddl",
+    "tests.dialects.test_starrocks.TestStarrocks.test_refresh_invalid_mode",
+    "tests.dialects.test_starrocks.TestStarrocks.test_refresh_unsupported_options"
+  ],
+  "p2p": [
+    "tests.dialects.test_starrocks.TestStarrocks.test_aggregate_key",
+    "tests.dialects.test_starrocks.TestStarrocks.test_analyze",
+    "tests.dialects.test_starrocks.TestStarrocks.test_array_contains_all",
+    "tests.dialects.test_starrocks.TestStarrocks.test_between",
+    "tests.dialects.test_starrocks.TestStarrocks.test_date_add_sub",
+    "tests.dialects.test_starrocks.TestStarrocks.test_distinct_on",
+    "tests.dialects.test_starrocks.TestStarrocks.test_generate_date_array",
+    "tests.dialects.test_starrocks.TestStarrocks.test_identity",
+    "tests.dialects.test_starrocks.TestStarrocks.test_ignore_respect_nulls",
+    "tests.dialects.test_starrocks.TestStarrocks.test_map",
+    "tests.dialects.test_starrocks.TestStarrocks.test_min_max_by",
+    "tests.dialects.test_starrocks.TestStarrocks.test_partition",
+    "tests.dialects.test_starrocks.TestStarrocks.test_regex",
+    "tests.dialects.test_starrocks.TestStarrocks.test_starrocks",
+    "tests.dialects.test_starrocks.TestStarrocks.test_table_function",
+    "tests.dialects.test_starrocks.TestStarrocks.test_time",
+    "tests.dialects.test_starrocks.TestStarrocks.test_time_slice",
+    "tests.dialects.test_starrocks.TestStarrocks.test_trim",
+    "tests.dialects.test_starrocks.TestStarrocks.test_unnest"
+  ],
+  "files_changed": [
+    "sqlglot/expressions/core.py",
+    "sqlglot/generator.py",
+    "sqlglot/generators/starrocks.py",
+    "sqlglot/parsers/starrocks.py",
+    "tests/dialects/test_starrocks.py"
+  ],
+  "added_lines": 56,
+  "prompt_variant": "terse",
+  "khoros_tier_with_files": "T2_ORCHESTRATED",
+  "khoros_tier_prompt_only": "T0_MICRO",
+  "f2p_assertions": {
+    "tests.dialects.test_starrocks.TestStarrocks.test_ddl": 81,
+    "tests.dialects.test_starrocks.TestStarrocks.test_refresh_invalid_mode": 4,
+    "tests.dialects.test_starrocks.TestStarrocks.test_refresh_unsupported_options": 12
+  },
+  "f2p_assertions_passing_before": {
+    "tests.dialects.test_starrocks.TestStarrocks.test_ddl": 10,
+    "tests.dialects.test_starrocks.TestStarrocks.test_refresh_invalid_mode": 3,
+    "tests.dialects.test_starrocks.TestStarrocks.test_refresh_unsupported_options": 2
+  }
+}

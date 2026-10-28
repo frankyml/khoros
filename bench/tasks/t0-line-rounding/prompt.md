@@ -1,0 +1,1 @@
+Customers report line totals that are off by a cent. Example: 3 units of a product priced `1.005` show a line total of `3.01`, but our rounding policy (half-up to the cent, see `money.py`) says it should be `3.02`. Find the cause and fix it.
