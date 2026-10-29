@@ -23,6 +23,8 @@ import tempfile
 import time
 from pathlib import Path
 
+os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+
 ROOT_HARNESS_DIR = Path(__file__).resolve().parent.parent / ".harness"
 sys.path.insert(0, str(ROOT_HARNESS_DIR))
 
@@ -371,15 +373,16 @@ def cmd_stop(payload: dict) -> int:
         return 0  # already gave up on exactly this failure: stay given up
     blocks = 0 if gstate.get("signature") != sig and gstate.get("gave_up") else int(gstate.get("blocks", 0))
 
+    tree_at_block = (snapshot_tree(root) or {}).get("tree", tree_now)
     if blocks >= max_blocks:
-        save_state(gpath, {"blocks": blocks, "gave_up": True, "signature": sig, "tree": tree_now})
+        save_state(gpath, {"blocks": blocks, "gave_up": True, "signature": sig, "tree": tree_at_block})
         return allow(
             f"khoros gate gave up after {max_blocks} attempts; tell the user verification is failing.",
             clamp_lines(format_report(report, tail_lines=20), 25),
             *notes,
         )
 
-    if not save_state(gpath, {"blocks": blocks + 1, "gave_up": False, "signature": sig, "tree": tree_now}):
+    if not save_state(gpath, {"blocks": blocks + 1, "gave_up": False, "signature": sig, "tree": tree_at_block}):
         # the counter cannot advance, so blocking could repeat forever: fail open
         return allow("khoros gate: cannot persist its retry counter; allowing stop without blocking.", *notes)
 

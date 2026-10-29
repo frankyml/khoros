@@ -234,6 +234,7 @@ def _run_command(cmd: Any, cwd: Path, timeout: float, shell: bool = False) -> Tu
     cannot keep us waiting after the timeout.
     """
     env = dict(os.environ)
+    env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
     env["KHOROS_VERIFY_DEPTH"] = str(int(env.get("KHOROS_VERIFY_DEPTH", "0") or 0) + 1)
     with tempfile.TemporaryFile() as sink:
         _LAUNCH["busy"] = True
