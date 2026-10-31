@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/../bin/khoros-gate\" session-start",
+            "command": "if [ -x \"${CLAUDE_PLUGIN_ROOT}/bin/khoros-gate\" ]; then \"${CLAUDE_PLUGIN_ROOT}/bin/khoros-gate\" session-start; elif [ -x \"${CLAUDE_PLUGIN_ROOT}/../bin/khoros-gate\" ]; then \"${CLAUDE_PLUGIN_ROOT}/../bin/khoros-gate\" session-start; else khoros-gate session-start; fi",
             "timeout": 60
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/../bin/khoros-gate\" stop",
+            "command": "if [ -x \"${CLAUDE_PLUGIN_ROOT}/bin/khoros-gate\" ]; then \"${CLAUDE_PLUGIN_ROOT}/bin/khoros-gate\" stop; elif [ -x \"${CLAUDE_PLUGIN_ROOT}/../bin/khoros-gate\" ]; then \"${CLAUDE_PLUGIN_ROOT}/../bin/khoros-gate\" stop; else khoros-gate stop; fi",
             "timeout": 300
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/../bin/khoros-gate\" post-edit",
+            "command": "if [ -x \"${CLAUDE_PLUGIN_ROOT}/bin/khoros-gate\" ]; then \"${CLAUDE_PLUGIN_ROOT}/bin/khoros-gate\" post-edit; elif [ -x \"${CLAUDE_PLUGIN_ROOT}/../bin/khoros-gate\" ]; then \"${CLAUDE_PLUGIN_ROOT}/../bin/khoros-gate\" post-edit; else khoros-gate post-edit; fi",
             "timeout": 15
           }
         ]

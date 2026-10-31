@@ -10,6 +10,7 @@ Checks: secrets, python syntax, JS syntax (node --check), JSON/YAML/TOML parse, 
 design tokens (only with .harness/design-tokens.json and UI files in scope), lint commands, tests.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -41,6 +42,7 @@ DEFAULT_VERIFY_CONFIG: Dict[str, Any] = {
     "max_stop_blocks": 3,
     "loop_edit_threshold": 8,
     "gate_budget": 270,  # seconds for the whole Stop gate (lint + tests + baseline); hook timeout is 300
+    "allow_test_mutation": False,
 }
 
 FIX_HINTS = {
@@ -53,6 +55,7 @@ FIX_HINTS = {
     "UNIT_TEST_FAILURE": "Reproduce with the command shown, fix the failing test or the code it covers, then re-run.",
     "TEST_TIMEOUT": "The test command exceeded its time budget; run it by hand, or raise verify.test_timeout in .harness/config.yaml.",
     "LINT_FAILURE": "Run the lint command shown and fix what it reports.",
+    "TEST_MUTATION_BLOCKED": "Restore the test or assertion. If test modification is intentional, pass '--allow-test-changes' to khoros verify or set 'verify.allow_test_mutation: true' in .harness/config.yaml.",
 }
 
 
@@ -194,6 +197,110 @@ def expand_files(targets: List[Path]) -> List[Path]:
             if f.is_file() and not any(p in SKIP_DIRS for p in below) and f.suffix.lower() not in BINARY_SUFFIXES:
                 files.append(f)
     return files
+
+
+def is_test_file(path: Path) -> bool:
+    s = str(path).lower()
+    name = path.name.lower()
+    if "/tests/" in s or "/test/" in s or "/__tests__/" in s:
+        return True
+    if name.startswith("test_") or name.endswith("_test.py") or name.endswith("_test.go"):
+        return True
+    if name.endswith("test.kt") or name.endswith("tests.kt") or name.endswith("test.java"):
+        return True
+    if name.endswith(".spec.ts") or name.endswith(".test.ts") or name.endswith(".spec.js") or name.endswith(".test.js"):
+        return True
+    return False
+
+
+def get_state_dir(workspace_dir: Path) -> Path:
+    """<git-dir>/khoros or temp fallback."""
+    try:
+        proc = subprocess.run(["git", "rev-parse", "--absolute-git-dir"], cwd=str(workspace_dir), capture_output=True, text=True, timeout=10)
+        if proc.returncode == 0 and proc.stdout.strip():
+            d = Path(proc.stdout.strip()) / "khoros"
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+    except (OSError, subprocess.SubprocessError):
+        pass
+    key = hashlib.sha1(str(workspace_dir).encode()).hexdigest()[:12]
+    d = Path(tempfile.gettempdir()) / f"khoros-{key}"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def build_ctrf_report(workspace_dir: Path, report: Dict[str, Any], start_time: float, stop_time: float) -> Dict[str, Any]:
+    tests_info = report.get("tests") or {}
+    total_tests = 0
+    passed_tests = 0
+    failed_tests = 0
+    skipped_tests = 0
+
+    runs = tests_info.get("runs") or []
+    for r in runs:
+        if r.get("status") == "passed":
+            passed_tests += 1
+            total_tests += 1
+        elif r.get("status") in ("failed", "timed_out"):
+            failed_tests += 1
+            total_tests += 1
+        elif r.get("status") == "skipped":
+            skipped_tests += 1
+
+    commit_sha = "unknown"
+    try:
+        proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(workspace_dir), capture_output=True, text=True, timeout=5)
+        if proc.returncode == 0 and proc.stdout.strip():
+            commit_sha = proc.stdout.strip()[:10]
+    except Exception:
+        pass
+
+    return {
+        "reportFormat": "CTRF",
+        "specVersion": "0.0.1",
+        "results": {
+            "tool": {
+                "name": "khoros-verifier",
+                "version": "4.1.0"
+            },
+            "summary": {
+                "tests": total_tests,
+                "passed": passed_tests,
+                "failed": failed_tests,
+                "skipped": skipped_tests,
+                "start": int(start_time),
+                "stop": int(stop_time)
+            },
+            "environment": {
+                "commit": commit_sha,
+                "profile": report.get("profile", "generic"),
+                "scope": report.get("scope", "full")
+            },
+            "extra": {
+                "passed": report.get("passed", False),
+                "checks_run": report.get("checks_run", []),
+                "skipped": report.get("skipped", []),
+                "violation_count": report.get("violation_count", 0),
+                "violations": report.get("violations", [])
+            }
+        }
+    }
+
+
+def save_evidence(workspace_dir: Path, report: Dict[str, Any], start_time: float, stop_time: float, export_path: Optional[Path] = None) -> Path:
+    sd = get_state_dir(workspace_dir)
+    evidence_path = sd / "evidence.json"
+    ctrf = build_ctrf_report(workspace_dir, report, start_time, stop_time)
+    data = json.dumps(ctrf, indent=2)
+    tmp = evidence_path.with_suffix(".tmp")
+    tmp.write_text(data, encoding="utf-8")
+    tmp.replace(evidence_path)
+
+    if export_path:
+        export_path.parent.mkdir(parents=True, exist_ok=True)
+        export_path.write_text(data, encoding="utf-8")
+
+    return evidence_path
 
 
 def _tail(text: str, lines: int = TAIL_LINES) -> str:
@@ -727,6 +834,83 @@ class VerificationPipeline:
                 )
         return violations
 
+    def verify_test_mutations(self, test_files: List[Path], allow_mutation: bool = False) -> List[Dict[str, Any]]:
+        if allow_mutation:
+            return []
+        violations: List[Dict[str, Any]] = []
+        rel_files = []
+        for f in test_files:
+            try:
+                rel_files.append(str(f.relative_to(self.workspace_dir)))
+            except ValueError:
+                rel_files.append(str(f))
+
+        diff_text = ""
+        try:
+            cmd = ["git", "diff", "HEAD", "--", *rel_files]
+            proc = subprocess.run(cmd, cwd=str(self.workspace_dir), capture_output=True, text=True, timeout=10)
+            diff_text = proc.stdout if proc.returncode == 0 else ""
+            if not diff_text:
+                proc2 = subprocess.run(["git", "diff", "--cached", "--", *rel_files], cwd=str(self.workspace_dir), capture_output=True, text=True, timeout=10)
+                proc3 = subprocess.run(["git", "diff", "--", *rel_files], cwd=str(self.workspace_dir), capture_output=True, text=True, timeout=10)
+                diff_text = (proc2.stdout or "") + "\n" + (proc3.stdout or "")
+        except (OSError, subprocess.SubprocessError):
+            return []
+
+        if not diff_text.strip():
+            return []
+
+        file_diffs = diff_text.split("diff --git ")
+        for fdiff in file_diffs:
+            if not fdiff.strip():
+                continue
+            lines = fdiff.splitlines()
+            header = lines[0] if lines else ""
+            m = re.search(r"b/(.+)$", header)
+            fname = m.group(1).strip() if m else ""
+            cur_line = 0
+
+            for line in lines:
+                if line.startswith("@@"):
+                    m_chunk = re.search(r"\+(\d+)", line)
+                    if m_chunk:
+                        cur_line = int(m_chunk.group(1))
+                    continue
+
+                if line.startswith("+") and not line.startswith("+++"):
+                    added = line[1:]
+                    if re.search(r"@(?:pytest\.mark\.skip|unittest\.skip|Disabled|Ignore)\b|\b(?:xit|describe\.skip|it\.skip|test\.skip|t\.Skip)\s*\(", added):
+                        violations.append({
+                            "file": fname or str(self.workspace_dir),
+                            "line": cur_line,
+                            "rule": "TEST_MUTATION_BLOCKED",
+                            "message": f"Test skip injected: '{added.strip()}' in {fname}:{cur_line}",
+                            "severity": "ERROR",
+                        })
+                    elif re.search(r"^\s*(?:#|//)\s*(?:assert\b|expect\b|assertEquals|assertTrue|assertFalse|assert_eq!|assertThat)", added):
+                        violations.append({
+                            "file": fname or str(self.workspace_dir),
+                            "line": cur_line,
+                            "rule": "TEST_MUTATION_BLOCKED",
+                            "message": f"Active assertion commented out: '{added.strip()}' in {fname}:{cur_line}",
+                            "severity": "ERROR",
+                        })
+                    cur_line += 1
+                elif line.startswith("-") and not line.startswith("---"):
+                    deleted = line[1:]
+                    if re.search(r"^\s*(?:def\s+test_|@Test\s+(?:fun|void)\s+test|fun\s+test|\b(?:it|test)\s*\(|func\s+Test)", deleted):
+                        violations.append({
+                            "file": fname or str(self.workspace_dir),
+                            "line": cur_line,
+                            "rule": "TEST_MUTATION_BLOCKED",
+                            "message": f"Test function deleted: '{deleted.strip()}' in {fname}",
+                            "severity": "ERROR",
+                        })
+                elif not line.startswith("-"):
+                    cur_line += 1
+
+        return violations
+
     # -- orchestration
 
     def default_targets(self) -> List[Path]:
@@ -747,7 +931,10 @@ class VerificationPipeline:
         fast: bool = False,
         test_timeout: Optional[float] = None,
         scope_label: Optional[str] = None,
+        allow_test_changes: bool = False,
+        export_evidence: Optional[Path] = None,
     ) -> Tuple[bool, Dict[str, Any]]:
+        start_time = time.time()
         scope = "full"
         if targets:
             scope = scope_label or "targets"
@@ -816,6 +1003,16 @@ class VerificationPipeline:
         else:
             skipped.append("spec-mermaid (skipped: no docs changes in scope)")
 
+        # Test Mutation / Anti-Gaming Guardrail
+        allow_mutation = allow_test_changes or bool(self.config.get("allow_test_mutation", False))
+        test_files = [f for f in files if is_test_file(f)]
+        if test_files:
+            checks_run.append("test-tampering")
+            mut_violations = self.verify_test_mutations(test_files, allow_mutation=allow_mutation)
+            violations.extend(mut_violations)
+        else:
+            skipped.append("test-tampering (skipped: no test files in scope)")
+
         test_result: Dict[str, Any] = {"status": "skipped", "reason": "not requested (--no-tests / --fast)"}
         if fast:
             skipped.append("lint-commands (skipped: --fast)")
@@ -875,6 +1072,11 @@ class VerificationPipeline:
             "tests": test_result,
             "timed_out": timed_out,
         }
+        stop_time = time.time()
+        try:
+            save_evidence(self.workspace_dir, report, start_time, stop_time, export_path=export_evidence)
+        except Exception:
+            pass
         return passed, report
 
 

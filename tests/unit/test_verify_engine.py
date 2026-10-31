@@ -443,5 +443,69 @@ class TestVerifyCli(VerifyEngineBase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
 
+class TestAntiGamingAndEvidence(VerifyEngineBase):
+    def test_test_skip_injection_blocked(self):
+        git(self.ws, "init", "-q")
+        git(self.ws, "config", "user.email", "t@t")
+        git(self.ws, "config", "user.name", "t")
+        self.write("tests/test_demo.py", "def test_one():\n    assert True\n")
+        git(self.ws, "add", "-A")
+        git(self.ws, "commit", "-qm", "initial test")
+
+        # Inject skip
+        self.write("tests/test_demo.py", "import pytest\n@pytest.mark.skip\ndef test_one():\n    assert True\n")
+        ok, report = VerificationPipeline(workspace_dir=self.ws).run(targets=[self.ws / "tests"], run_tests=False)
+        self.assertFalse(ok)
+        self.assertTrue(any(v.get("rule") == "TEST_MUTATION_BLOCKED" for v in report["violations"]))
+
+    def test_commented_assertion_blocked(self):
+        git(self.ws, "init", "-q")
+        git(self.ws, "config", "user.email", "t@t")
+        git(self.ws, "config", "user.name", "t")
+        self.write("tests/test_demo.py", "def test_one():\n    assert 1 == 1\n")
+        git(self.ws, "add", "-A")
+        git(self.ws, "commit", "-qm", "initial test")
+
+        # Comment out assertion
+        self.write("tests/test_demo.py", "def test_one():\n    # assert 1 == 1\n    pass\n")
+        ok, report = VerificationPipeline(workspace_dir=self.ws).run(targets=[self.ws / "tests"], run_tests=False)
+        self.assertFalse(ok)
+        self.assertTrue(any(v.get("rule") == "TEST_MUTATION_BLOCKED" for v in report["violations"]))
+
+    def test_allow_test_changes_bypasses_check(self):
+        git(self.ws, "init", "-q")
+        git(self.ws, "config", "user.email", "t@t")
+        git(self.ws, "config", "user.name", "t")
+        self.write("tests/test_demo.py", "def test_one():\n    assert 1 == 1\n")
+        git(self.ws, "add", "-A")
+        git(self.ws, "commit", "-qm", "initial test")
+
+        # Inject skip with bypass flag
+        self.write("tests/test_demo.py", "import pytest\n@pytest.mark.skip\ndef test_one():\n    assert 1 == 1\n")
+        ok, report = VerificationPipeline(workspace_dir=self.ws).run(targets=[self.ws / "tests"], run_tests=False, allow_test_changes=True)
+        self.assertTrue(ok)
+
+    def test_ctrf_evidence_saved_in_git_dir(self):
+        git(self.ws, "init", "-q")
+        git(self.ws, "config", "user.email", "t@t")
+        git(self.ws, "config", "user.name", "t")
+        self.write("demo.py", "x = 42\n")
+        git(self.ws, "add", "-A")
+        git(self.ws, "commit", "-qm", "init")
+
+        ok, report = VerificationPipeline(workspace_dir=self.ws).run(targets=[self.ws / "demo.py"], run_tests=False)
+        self.assertTrue(ok)
+        
+        evidence_file = self.ws / ".git" / "khoros" / "evidence.json"
+        self.assertTrue(evidence_file.exists())
+        data = json.loads(evidence_file.read_text(encoding="utf-8"))
+        self.assertEqual(data.get("reportFormat"), "CTRF")
+        self.assertTrue(data["results"]["extra"]["passed"])
+
+        # Check worktree remains clean (no evidence.json in tree)
+        proc = subprocess.run(["git", "status", "--porcelain"], cwd=str(self.ws), capture_output=True, text=True)
+        self.assertEqual(proc.stdout.strip(), "")
+
+
 if __name__ == "__main__":
     unittest.main()

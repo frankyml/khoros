@@ -27,7 +27,7 @@ from dispatcher import LeadRouter, TaskDispatcher
 from governor import PriorityTier, TokenGovernor
 from linter import DesignTokenLinter
 from prd_engine import PRDEngine
-from verifier import VerificationPipeline, detect_project_profile, format_report
+from verifier import VerificationPipeline, detect_project_profile, format_report, get_state_dir
 
 
 def format_table(headers, rows):
@@ -75,9 +75,17 @@ def run_lint_targets(targets: List[Path]) -> int:
 
 
 def run_verification_gate(targets: List[Path] = None, profile: str = None, run_tests: bool = True,
-                          changed: bool = False, fast: bool = False, as_json: bool = False) -> int:
+                          changed: bool = False, fast: bool = False, as_json: bool = False,
+                          allow_test_changes: bool = False, export_evidence: Optional[Path] = None) -> int:
     pipeline = VerificationPipeline(profile=profile)
-    ok, report = pipeline.run(targets=targets, run_tests=run_tests, changed=changed, fast=fast)
+    ok, report = pipeline.run(
+        targets=targets,
+        run_tests=run_tests,
+        changed=changed,
+        fast=fast,
+        allow_test_changes=allow_test_changes,
+        export_evidence=export_evidence,
+    )
     if as_json:
         print(json.dumps(report, indent=2))
     else:
@@ -106,7 +114,7 @@ def cmd_status(args):
     except Exception:
         host_str = "Auto"
 
-    print(f"\n=== Khoros v3.1 Status [{Path.cwd().name} | Profile: {active_profile} | Host: {host_str}] ===\n")
+    print(f"\n=== Khoros Status [{Path.cwd().name} | Profile: {active_profile} | Host: {host_str}] ===\n")
     if not tasks:
         print("No tasks registered in blackboard. Create one with: khoros task create <id> <title>")
     else:
@@ -241,12 +249,73 @@ def cmd_review(args):
         print(f"Error: Task '{tid}' not found.", file=sys.stderr)
         sys.exit(1)
 
-    print(f"\n--- Reviewing Task: {contract['id']} ({contract['title']}) ---")
-    print(
-        f"Status: {contract['status']} | Type: {contract['task_type']} | "
-        f"Owner: {contract['owner']} | Fencing Token: {contract['fencing_token']}"
-    )
-    print("Contract:", json.dumps(contract, indent=2))
+    claimed_commit = contract.get("claimed_commit")
+    scope_files = contract.get("scope_files") or []
+
+    changed_files = []
+    try:
+        base_ref = claimed_commit if claimed_commit else "HEAD~1"
+        p = subprocess.run(["git", "diff", "--name-only", base_ref], cwd=str(Path.cwd()), capture_output=True, text=True, timeout=10)
+        if p.returncode == 0:
+            changed_files = [f.strip() for f in p.stdout.splitlines() if f.strip()]
+        else:
+            p2 = subprocess.run(["git", "diff", "--name-only", "--cached"], cwd=str(Path.cwd()), capture_output=True, text=True, timeout=10)
+            p3 = subprocess.run(["git", "diff", "--name-only"], cwd=str(Path.cwd()), capture_output=True, text=True, timeout=10)
+            changed_files = list(set([f.strip() for f in (p2.stdout + "\n" + p3.stdout).splitlines() if f.strip()]))
+    except Exception:
+        changed_files = []
+
+    scope_violations = []
+    if scope_files:
+        for cf in changed_files:
+            if not any(cf == sf or cf.startswith(sf.rstrip("/") + "/") for sf in scope_files):
+                scope_violations.append(cf)
+
+    sd = get_state_dir(Path.cwd())
+    ev_file = sd / "evidence.json"
+    ev_status = "UNKNOWN (run 'khoros verify')"
+    if ev_file.exists():
+        try:
+            ev_data = json.loads(ev_file.read_text(encoding="utf-8"))
+            if ev_data.get("results", {}).get("extra", {}).get("passed"):
+                ev_status = "PASSED (all verification checks green)"
+            else:
+                vc = ev_data.get("results", {}).get("extra", {}).get("violation_count", 0)
+                ev_status = f"FAILED ({vc} violations)"
+        except Exception:
+            pass
+
+    criteria = contract.get("acceptance_criteria") or []
+    if isinstance(criteria, str):
+        criteria = [c.strip() for c in criteria.split(";") if c.strip()]
+
+    print(f"\n# Khoros Task Review Packet: {contract['id']} — {contract['title']}")
+    print(f"- **Task Status**: `{contract['status']}` | **Owner**: `{contract['owner']}` | **Type**: `{contract['task_type']}`")
+    print(f"- **Verification Gate**: `{ev_status}`")
+    if claimed_commit:
+        print(f"- **Claimed Baseline Commit**: `{claimed_commit[:10]}`")
+
+    print(f"\n## 1. Acceptance Criteria Checklist")
+    if not criteria:
+        print("  *(No explicit criteria recorded in contract)*")
+    else:
+        for c in criteria:
+            print(f"  [ ] {c}")
+
+    print(f"\n## 2. Scope Boundary Audit")
+    print(f"- **Declared Scope Files**: {', '.join(scope_files) if scope_files else 'Any'}")
+    print(f"- **Actually Changed Files** ({len(changed_files)}): {', '.join(changed_files[:8]) if changed_files else 'None'}")
+    if len(changed_files) > 8:
+        print(f"  *(and {len(changed_files) - 8} more)*")
+    if scope_violations:
+        print(f"\n> [!WARNING] Scope Boundary Violations ({len(scope_violations)} files edited outside declared scope):")
+        for sv in scope_violations[:5]:
+            print(f"> - `{sv}`")
+    else:
+        print("- **Scope Conformance**: ✓ Clean (no out-of-scope edits)")
+
+    print(f"\n## 3. Reviewer Action Seam")
+    print("Run `khoros verify` to validate final code state, then `khoros approve <task-id>` to finalize.\n")
 
 
 def cmd_approve(args):
@@ -380,6 +449,7 @@ def cmd_lint(args):
 def cmd_verify(args):
     raw_targets = args.targets if args.targets else []
     targets = [Path(t) for t in raw_targets] if raw_targets else None
+    export_ev = Path(args.export_evidence) if getattr(args, "export_evidence", None) else None
     rc = run_verification_gate(
         targets=targets,
         profile=args.profile,
@@ -387,9 +457,57 @@ def cmd_verify(args):
         changed=args.changed,
         fast=args.fast,
         as_json=args.json,
+        allow_test_changes=getattr(args, "allow_test_changes", False),
+        export_evidence=export_ev,
     )
     if rc != 0:
         sys.exit(rc)
+
+
+def cmd_evidence(args):
+    sd = get_state_dir(Path.cwd())
+    ev_file = sd / "evidence.json"
+    if not ev_file.exists():
+        print("No verification evidence found in state directory. Run 'khoros verify' first.")
+        sys.exit(1)
+
+    try:
+        data = json.loads(ev_file.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"Error reading evidence file: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if getattr(args, "export", None):
+        exp = Path(args.export)
+        exp.parent.mkdir(parents=True, exist_ok=True)
+        exp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        print(f"Evidence exported to {exp}")
+
+    if getattr(args, "json", False):
+        print(json.dumps(data, indent=2))
+    else:
+        results = data.get("results", {})
+        summary = results.get("summary", {})
+        env = results.get("environment", {})
+        extra = results.get("extra", {})
+
+        status = "PASSED" if extra.get("passed") else "FAILED"
+        print(f"\n=== Khoros Verification Evidence Manifest ===")
+        print(f"Status:       {status}")
+        print(f"Commit:       {env.get('commit', 'unknown')}")
+        print(f"Profile:      {env.get('profile', 'unknown')}")
+        print(f"Scope:        {env.get('scope', 'unknown')}")
+        duration = summary.get("stop", 0) - summary.get("start", 0)
+        print(f"Duration:     {duration}s")
+        print(f"Checks:       {', '.join(extra.get('checks_run', []))}")
+        print(f"Violations:   {extra.get('violation_count', 0)}")
+        if summary.get("tests", 0) > 0:
+            print(f"Tests:        {summary.get('passed', 0)} passed, {summary.get('failed', 0)} failed, {summary.get('skipped', 0)} skipped")
+        if extra.get("violations"):
+            print("\nViolations tail:")
+            for v in extra["violations"][:5]:
+                print(f"  • {v.get('rule')}: {v.get('message')} ({v.get('file')}:{v.get('line')})")
+        print()
 
 
 def cmd_profile(args):
@@ -732,6 +850,44 @@ def main():
     create_parser.add_argument("--criteria", default="", help="Semicolon-separated acceptance criteria")
     create_parser.add_argument("--spec", default=None, help="Path to specification document")
 
+    # task status / list
+    for t_stat in ("status", "list"):
+        task_subs.add_parser(t_stat, help="Show current blackboard tasks and status")
+
+    # task claim
+    t_claim = task_subs.add_parser("claim", help="Directly claim a specific task")
+    t_claim.add_argument("task_id", nargs="?", help="Task ID to claim")
+    t_claim.add_argument("worker_pos", nargs="?", help="Optional worker name")
+    t_claim.add_argument("--task-id", dest="task_id_flag", help="Task ID to claim")
+    t_claim.add_argument("--worker", "--worker-id", dest="worker", help="Worker name")
+
+    # task submit
+    t_submit = task_subs.add_parser("submit", help="Submit a task for review after passing verification checks")
+    t_submit.add_argument("task_id", nargs="?", help="Task ID to submit")
+    t_submit.add_argument("--task-id", dest="task_id_flag", help="Task ID to submit")
+    t_submit.add_argument("--token", type=int, default=None, help="Optional fencing token")
+    t_submit.add_argument("--summary", default="Implementation completed and verified", help="Completion summary")
+    t_submit.add_argument("--skip-lint", action="store_true", help="Skip pre-submit verification gate")
+
+    # task approve
+    t_approve = task_subs.add_parser("approve", help="Approve and finalize a task")
+    t_approve.add_argument("task_id", nargs="?", help="Task ID to approve")
+    t_approve.add_argument("--task-id", dest="task_id_flag", help="Task ID to approve")
+    t_approve.add_argument("--token", type=int, default=None, help="Optional fencing token (ignored)")
+    t_approve.add_argument("--skip-lint", action="store_true", help="Skip verification gate")
+
+    # task review
+    t_review = task_subs.add_parser("review", help="Review a submitted task and its contract")
+    t_review.add_argument("task_id", nargs="?", help="Task ID to inspect")
+    t_review.add_argument("--task-id", dest="task_id_flag", help="Task ID to inspect")
+    t_review.add_argument("--token", type=int, default=None, help="Optional fencing token (ignored)")
+
+    # task reject
+    t_reject = task_subs.add_parser("reject", help="Reject a task with feedback")
+    t_reject.add_argument("task_id", nargs="?", help="Task ID to reject")
+    t_reject.add_argument("--task-id", dest="task_id_flag", help="Task ID to reject")
+    t_reject.add_argument("--feedback", help="Feedback message for the agent", default="")
+
     # brief
     brief_p = subparsers.add_parser("brief", help="Generate a zero-loss Subagent Dispatch Packet from blackboard.db")
     brief_p.add_argument("task_id", nargs="?", help="Task ID")
@@ -785,7 +941,7 @@ def main():
 
     # events
     events_parser = subparsers.add_parser("events", help="Show event log")
-    events_parser.add_argument("--limit", type=int, default=20, help="Number of events to display")
+    events_parser.add_argument("-n", "--limit", type=int, default=20, help="Number of events to display")
 
     # prd
     prd_parser = subparsers.add_parser("prd", help="Generate a formal PRD with Mermaid diagrams")
@@ -815,6 +971,13 @@ def main():
     verify_parser.add_argument("--changed", action="store_true", help="Scope static checks to files changed vs git HEAD (incl. untracked)")
     verify_parser.add_argument("--fast", action="store_true", help="Static checks only, no tests (for per-edit use)")
     verify_parser.add_argument("--json", action="store_true", help="Machine-readable output")
+    verify_parser.add_argument("--allow-test-changes", action="store_true", help="Permit deletions or skip injections in test files")
+    verify_parser.add_argument("--export-evidence", default=None, help="Export CTRF evidence manifest to specified file path")
+
+    # evidence
+    evidence_parser = subparsers.add_parser("evidence", help="Show latest verification evidence manifest")
+    evidence_parser.add_argument("--json", action="store_true", help="Output evidence as raw JSON")
+    evidence_parser.add_argument("--export", default=None, help="Export latest evidence to file")
 
     # dispatch
     dispatch_parser = subparsers.add_parser("dispatch", help="Dispatch pending tasks (respecting DAG barriers & concurrency cap)")
@@ -882,8 +1045,21 @@ def main():
         cmd_compact(args)
     elif args.command == "personas":
         cmd_personas(args)
-    elif args.command == "task" and args.task_command == "create":
-        cmd_task_create(args)
+    elif args.command == "task":
+        if args.task_command == "create":
+            cmd_task_create(args)
+        elif args.task_command in ("status", "list"):
+            cmd_status(args)
+        elif args.task_command == "claim":
+            cmd_claim(args)
+        elif args.task_command in ("submit", "complete"):
+            cmd_submit(args)
+        elif args.task_command in ("approve", "review-approve"):
+            cmd_approve(args)
+        elif args.task_command == "review":
+            cmd_review(args)
+        elif args.task_command == "reject":
+            cmd_reject(args)
     elif args.command == "brief":
         cmd_brief(args)
     elif args.command == "claim":
@@ -910,6 +1086,8 @@ def main():
         cmd_lint(args)
     elif args.command == "verify":
         cmd_verify(args)
+    elif args.command == "evidence":
+        cmd_evidence(args)
     elif args.command == "kaizen":
         cmd_kaizen(args)
     elif args.command == "gc":
